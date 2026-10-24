@@ -1,0 +1,26 @@
+TEMPO for macOS
+
+1. Double-click Tempo.app.
+
+2. macOS will probably say it cannot check Tempo for malicious software. That is because Tempo is not
+   from the App Store and is not notarised by Apple (notarising needs a paid developer account).
+   Tempo only listens on your own computer and never sends your video anywhere.
+   Allow it once:
+   - macOS 15 (Sequoia) or later: open System Settings > Privacy & Security, scroll down to the message
+     about Tempo, click "Open Anyway", then confirm.
+   - macOS 14 or earlier: right-click (or Control-click) Tempo.app, choose Open, then click Open again.
+
+3. If macOS says Tempo is "damaged and can't be opened": open Terminal, type   xattr -cr   followed by a
+   space, drag Tempo.app into the Terminal window, press Return, then open Tempo.app again.
+   (This only removes the "downloaded from the internet" flag.)
+
+4. Your browser opens at http://localhost:8000 . If it does not, type that address yourself.
+   Allow the camera when the browser asks. Safari, Chrome and Edge work.
+
+5. The very first run downloads two small model files (about 10 MB) from Google's MediaPipe host.
+   After that Tempo works without internet.
+
+6. To quit, close the browser tab. Tempo stops by itself about 3 minutes later.
+   If macOS asks whether Tempo may accept incoming connections, click Allow: it only listens on this computer.
+
+If something goes wrong, the log is at ~/Library/Caches/Tempo/tempo.log

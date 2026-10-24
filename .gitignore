@@ -1,0 +1,19 @@
+# dependencies and caches
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# study data: participant data must NEVER be committed
+data/
+artifacts/
+*.csv
+
+# build output (recreated by launcher/build.sh)
+launcher/dist/
+launcher/site/
+
+# secrets and OS noise
+.env
+*.pem
+.DS_Store

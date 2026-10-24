@@ -1,0 +1,15 @@
+TEMPO for Windows
+
+1. Double-click Tempo.exe.
+   Windows may show "Windows protected your PC" because Tempo is not signed with a paid certificate.
+   Click "More info", then "Run anyway".
+
+2. A small window opens and your browser opens at http://localhost:8000 . If it does not, type that address.
+   Allow the camera when the browser asks.
+
+3. The very first run downloads two small model files (about 10 MB) from Google's MediaPipe host.
+   After that Tempo works without internet.
+
+4. To quit, close the browser tab (the Tempo window closes by itself about 3 minutes later) or close the window.
+
+If something goes wrong, the log is at %LocalAppData%\Tempo\tempo.log

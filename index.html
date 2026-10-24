@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tempo: personal stress signals</title>
+<style>
+:root{--washi:#edeff5;--paper:#f8f9fc;--sunk:#e1e4ef;--rule:#cdd2e3;--ink:#1b2347;--dusk:#5b6485;--indigo:#2d3d91;--on:#f8f9fc;
+--saffron:#d9901a;--lichen:#3f8f6b;--madder:#b5473a;--ease:cubic-bezier(.22,.8,.24,1);
+--serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+--sans:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Devanagari","Nirmala UI",sans-serif;color-scheme:light dark}
+@media(prefers-color-scheme:dark){:root{--washi:#12172e;--paper:#1a2142;--sunk:#232b55;--rule:#2f386a;--ink:#e8ebf7;--dusk:#98a1c4;
+--indigo:#9aa9f5;--on:#12172e;--saffron:#f2b04a;--lichen:#6bc49a;--madder:#e7806f}}
+*{box-sizing:border-box;margin:0}[hidden]{display:none!important}
+body{min-height:100vh;background:var(--washi);color:var(--ink);font:16px/1.55 var(--sans);-webkit-font-smoothing:antialiased}
+main{max-width:1120px;margin:0 auto;padding:22px 22px 64px}
+.top{display:flex;justify-content:space-between;align-items:center;padding:4px 0 34px}
+.brand{display:flex;align-items:center;gap:10px;font:600 22px var(--serif);letter-spacing:.2px}
+.mark{width:36px;height:20px;fill:none;stroke:var(--saffron);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.who,.dusk{color:var(--dusk)}.who{font-size:14px}.small{font-size:13px}
+h1{font:500 clamp(34px,5vw,56px)/1.06 var(--serif);letter-spacing:-.6px;margin-bottom:20px}
+h2{font:500 28px/1.2 var(--serif);margin-bottom:6px}
+h3{font:600 14px var(--sans);color:var(--dusk);margin-bottom:8px}
+button,input{font:inherit;color:inherit}
+
+#consent{display:grid;grid-template-columns:1fr 1.05fr;gap:64px;align-items:center}
+.lede{font-size:19px;color:var(--dusk);max-width:32ch}
+.sheet{background:var(--paper);border-radius:22px;padding:30px;box-shadow:0 1px 0 var(--rule),0 30px 70px -38px rgba(27,35,71,.5)}
+.ids{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
+.ids label{display:grid;gap:6px;font-size:13px;color:var(--dusk)}
+input[type=text]{background:transparent;border:1px solid var(--rule);border-radius:12px;padding:11px 13px;transition:border-color .25s,box-shadow .25s}
+input[type=text]:focus{outline:none;border-color:var(--indigo);box-shadow:0 0 0 4px color-mix(in srgb,var(--indigo) 22%,transparent)}
+.sw{display:flex;gap:14px;align-items:flex-start;padding:14px 0;border-top:1px solid var(--rule);cursor:pointer}
+.sw input{appearance:none;flex:none;width:46px;height:27px;border-radius:14px;background:var(--sunk);position:relative;margin-top:2px;cursor:pointer;transition:background .3s var(--ease)}
+.sw input::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:var(--dusk);transition:transform .3s var(--ease),background .3s}
+.sw input:checked{background:color-mix(in srgb,var(--indigo) 35%,var(--sunk))}
+.sw input:checked::after{transform:translateX(19px);background:var(--indigo)}
+.sw input:focus-visible{outline:2px solid var(--indigo);outline-offset:3px}
+.sw b{display:block;font-weight:600}.sw span{display:block;color:var(--dusk);font-size:14px}
+.act{display:flex;align-items:center;gap:14px;margin-top:22px;flex-wrap:wrap}
+.btn{border:0;border-radius:999px;padding:12px 24px;font-weight:600;cursor:pointer;background:var(--indigo);color:var(--on);transition:transform .25s var(--ease),box-shadow .3s,opacity .25s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 12px 24px -14px var(--indigo)}
+.btn:active{transform:none}.btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}
+.btn.ghost{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--rule)}
+.btn:focus-visible{outline:2px solid var(--indigo);outline-offset:3px}
+
+#run{display:none;grid-template-columns:minmax(0,330px) 1fr;gap:48px;align-items:start}
+body:not([data-stage=consent]) #run{display:grid}body:not([data-stage=consent]) #consent{display:none}
+.cam{position:sticky;top:22px}
+video{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:18px;background:var(--sunk);transform:scaleX(-1);opacity:0;transition:opacity .9s var(--ease)}
+video.on{opacity:1}
+.dots{display:flex;gap:18px;margin-top:14px;font-size:13px;color:var(--dusk)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--rule);margin-right:7px;transition:background .5s}
+[data-q=good]{background:var(--lichen)}[data-q=fair]{background:var(--saffron)}[data-q=poor]{background:var(--madder)}
+#setup,#live{display:none}body[data-stage=setup] #setup,body[data-stage=live] #live{display:block;animation:fade .6s ease both}
+@keyframes fade{from{opacity:0}}
+
+.ringwrap{position:relative;display:grid;place-items:center;width:200px;height:200px;margin:4px 0 26px}
+.ring{position:absolute;inset:0;transform:rotate(-90deg)}.ring circle{fill:none;stroke-width:5}
+.ring .bg{stroke:var(--sunk)}.ring .fg{stroke:var(--indigo);stroke-linecap:round;stroke-dasharray:339.3;stroke-dashoffset:339.3;transition:stroke-dashoffset 1s linear}
+.ringtxt{text-align:center}.ringtxt b{display:block;font:500 42px/1 var(--serif);font-variant-numeric:tabular-nums}
+.checks{display:grid;gap:4px;max-width:420px;margin-top:22px}
+.chk{display:flex;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--rule)}
+
+.barline{display:flex;flex-wrap:wrap;gap:14px 18px;align-items:center;margin-bottom:26px}
+.barline .gap{flex:1}
+.seg{display:inline-flex;background:var(--sunk);border-radius:999px;padding:4px}
+.seg label{position:relative;cursor:pointer}.seg input{position:absolute;opacity:0}
+.seg span{display:block;padding:8px 18px;border-radius:999px;font-size:14px;color:var(--dusk);transition:background .35s var(--ease),color .35s}
+.seg input:checked+span{background:var(--paper);color:var(--ink);box-shadow:0 1px 6px rgba(27,35,71,.2)}
+.seg input:focus-visible+span{outline:2px solid var(--indigo)}
+.pill{font-size:13px;padding:5px 12px;border-radius:999px;background:var(--sunk);color:var(--dusk);transition:background .4s,color .4s}
+.pill[data-ok="1"]{background:color-mix(in srgb,var(--lichen) 22%,transparent);color:var(--ink)}
+.timer{font:500 20px var(--serif);font-variant-numeric:tabular-nums;color:var(--dusk);min-width:3.2ch}
+
+.state{padding-bottom:6px}
+.state-main{display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap}
+.stateword{font:500 clamp(28px,4vw,40px)/1.1 var(--serif);letter-spacing:-.3px}
+.statenum{font:500 26px var(--serif);color:var(--dusk);font-variant-numeric:tabular-nums}
+#idxBand{fill:var(--sunk);opacity:.8}
+.spark{display:block;width:100%;height:auto;margin-top:10px;overflow:visible}
+.spark path{fill:none;stroke:var(--saffron);stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;vector-effect:non-scaling-stroke}
+body[data-stage=live] .spark path{animation:draw 1.8s var(--ease) .15s both}@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+.spark circle{fill:var(--saffron);opacity:0;transition:opacity .5s;transform-box:fill-box;transform-origin:center}
+.spark circle.on{opacity:1;animation:beat var(--beat,2.4s) ease-in-out infinite}
+@keyframes beat{0%,100%{transform:scale(1)}14%{transform:scale(1.7)}32%{transform:scale(1)}}
+.axis{display:flex;justify-content:space-between;font-size:12px;color:var(--dusk);border-top:1px solid var(--rule);padding-top:6px}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:44px;margin-top:34px}
+.row{display:grid;grid-template-columns:138px 1fr 44px;gap:12px;align-items:center;padding:9px 0}
+.row .lbl{font-size:14px}.row .val{font-size:13px;color:var(--dusk);text-align:right;font-variant-numeric:tabular-nums}
+.trk{position:relative;height:6px;border-radius:3px;background:var(--sunk)}
+.trk::before{content:"";position:absolute;left:50%;top:-5px;width:1px;height:16px;background:var(--rule)}
+.trk i{position:absolute;top:0;height:100%;left:50%;width:0;border-radius:3px;background:var(--indigo);transition:left .8s var(--ease),width .8s var(--ease),opacity .4s}
+.row.na .trk i{opacity:.15}
+details{margin-top:30px}summary{cursor:pointer;color:var(--dusk);font-size:14px}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-variant-numeric:tabular-nums;font-size:13px}
+td,th{padding:4px 0;text-align:right;font-weight:400;border-bottom:1px solid var(--rule)}td:first-child,th:first-child{text-align:left}
+.foot{display:flex;gap:12px;margin-top:30px}
+
+.scrim{position:fixed;inset:0;background:rgba(18,23,46,.45);opacity:0;pointer-events:none;transition:opacity .4s;z-index:10}.scrim.open{opacity:1;pointer-events:auto}
+#drawer{position:fixed;top:0;right:0;height:100%;width:min(430px,100%);background:var(--paper);padding:30px;overflow:auto;z-index:20;
+transform:translateX(104%);transition:transform .5s var(--ease);box-shadow:-30px 0 70px -40px rgba(18,23,46,.7)}
+#drawer.open{transform:none}
+.rate{margin:24px 0}.rate .head{display:flex;justify-content:space-between;align-items:baseline}
+.rate output{font:500 26px var(--serif);min-width:2ch;text-align:right;transition:opacity .3s}.rate[data-t="0"] output{opacity:.3}
+.rate .sub{font-size:13px;color:var(--dusk)}
+input[type=range]{width:100%;appearance:none;background:transparent;height:30px;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--sunk)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--sunk)}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:24px;height:24px;margin-top:-9px;border-radius:50%;background:var(--indigo);border:4px solid var(--paper);box-shadow:0 0 0 1px var(--indigo);transition:opacity .3s}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--indigo);border:4px solid var(--paper);box-shadow:0 0 0 1px var(--indigo)}
+.rate[data-t="0"] input::-webkit-slider-thumb{opacity:.35}.rate[data-t="0"] input::-moz-range-thumb{opacity:.35}
+.scale{display:flex;justify-content:space-between;font-size:12px;color:var(--dusk)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,18px);background:var(--ink);color:var(--washi);padding:11px 20px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .35s,transform .45s var(--ease);z-index:30;max-width:92vw;text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media(max-width:860px){#consent{grid-template-columns:1fr;gap:30px}#run{grid-template-columns:1fr;gap:28px}.cam{position:static}
+.cols{grid-template-columns:1fr;gap:26px}.ids{grid-template-columns:1fr}
+#drawer{top:auto;bottom:0;height:auto;max-height:92%;width:100%;border-radius:22px 22px 0 0;transform:translateY(104%)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body data-stage="consent">
+<main>
+<header class="top">
+ <div class="brand"><svg class="mark" viewBox="0 0 36 20" aria-hidden="true"><path d="M1 11h8l3-8 5 15 4-11 2 4h12"/></svg>Tempo</div>
+ <div class="who" id="who"></div>
+</header>
+
+<section id="consent">
+ <div>
+  <h1>Read your own stress signals, privately.</h1>
+  <p class="lede">Tempo compares small changes in your face, pulse and posture with your own baseline. Everything is calculated on this device.</p>
+ </div>
+ <div class="sheet">
+  <div class="ids">
+   <label>Participant ID<input type="text" id="participantId" placeholder="P001" autocomplete="off"></label>
+   <label>Session ID<input type="text" id="sessionId" placeholder="S01" autocomplete="off"></label>
+  </div>
+  <label class="sw"><input type="checkbox" id="uFace"><div><b>Facial expression</b><span>Brow, eyes, mouth and gaze, compared with your own baseline</span></div></label>
+  <label class="sw"><input type="checkbox" id="uPose"><div><b>Posture and movement</b><span>Shoulders, sway, hand movement</span></div></label>
+  <label class="sw"><input type="checkbox" id="uPulse"><div><b>Pulse from skin colour</b><span>Experimental and less reliable than the face signals. Leave off unless you want it.</span></div></label>
+  <label class="sw"><input type="checkbox" id="ok"><div><b>I agree</b><span>Video is processed on this device only and is never recorded, stored or uploaded. Numbers are saved only when you press Export. You can stop at any time. Experimental, not a diagnostic tool.</span></div></label>
+  <div class="act"><button class="btn" id="go" disabled>Start setup</button><span class="dusk small" id="msg" role="status"></span></div>
+ </div>
+</section>
+
+<section id="run">
+ <div class="cam">
+  <video id="cam" playsinline muted></video>
+  <div class="dots"><span><i class="dot" id="dFace"></i>Face</span><span><i class="dot" id="dPulse"></i>Pulse</span><span><i class="dot" id="dPose"></i>Posture</span></div>
+  <p class="dusk small" style="margin-top:10px">Processed on this device. Nothing is recorded.</p>
+ </div>
+ <div>
+  <div id="setup">
+   <div class="ringwrap"><svg class="ring" viewBox="0 0 120 120" aria-hidden="true"><circle class="bg" cx="60" cy="60" r="54"/><circle class="fg" id="ring" cx="60" cy="60" r="54"/></svg>
+    <div class="ringtxt"><b id="ringNum">1:20</b><span class="dusk small" id="ringLbl">remaining</span></div></div>
+   <h2 id="setupTitle">Settling in</h2>
+   <p class="dusk" id="setupText">Sit comfortably and face the screen.</p>
+   <div class="checks">
+    <div class="chk" id="cFace"><i class="dot"></i><span>Face in frame</span></div>
+    <div class="chk" id="cPulse"><i class="dot"></i><span>Pulse signal</span></div>
+    <div class="chk" id="cPose"><i class="dot"></i><span>Shoulders in frame</span></div>
+    <div class="chk" id="cStill"><i class="dot"></i><span>Holding still</span></div>
+   </div>
+  </div>
+
+  <div id="live">
+   <div class="barline">
+    <div class="seg" id="phaseSeg" role="radiogroup" aria-label="Study phase">
+     <label><input type="radio" name="phase" value="baseline" checked><span>Baseline</span></label>
+     <label><input type="radio" name="phase" value="stressor"><span>Stressor</span></label>
+     <label><input type="radio" name="phase" value="recovery"><span>Recovery</span></label>
+    </div>
+    <span class="timer" id="phaseTime">0:00</span>
+    <span class="pill" id="win" role="status">setting up</span>
+    <span class="gap"></span>
+    <button class="btn" id="openReport">Check in</button>
+   </div>
+   <p class="dusk small" id="st" role="status" style="margin:-12px 0 18px"></p>
+
+   <div class="state">
+    <div class="state-main"><div class="stateword" id="stateWord">Not enough signal yet</div><div class="statenum" id="stateNum">–</div></div>
+    <p class="dusk small">Facial tension compared with your own baseline. Experimental: the weights come from the literature and are not yet validated.</p>
+    <svg class="spark" viewBox="0 0 600 130" aria-hidden="true"><rect id="idxBand" x="0" y="51.3" width="600" height="27.5" rx="8"/><path id="idxPath" pathLength="1" d=""/><circle id="idxHead" r="5" cx="-20" cy="-20"/></svg>
+    <div class="axis"><span>3 minutes ago</span><span>now</span></div>
+   </div>
+
+   <div class="cols">
+    <div><h3>Expression, change from your baseline</h3><div id="rowsFace"></div></div>
+    <div><h3>Movement, change from your baseline</h3><div id="rowsPose"></div><div class="row" id="pulseBox" hidden style="grid-template-columns:138px 1fr auto"><span class="lbl">Pulse</span><span class="dusk small" id="hrNote"></span><span class="val"><b id="hrNum">–</b> bpm</span></div></div>
+   </div>
+
+   <details><summary>Details for researchers</summary>
+    <table><thead><tr><th>Feature</th><th>Value</th><th>z vs baseline</th></tr></thead><tbody id="tb"></tbody></table>
+    <div id="guna" hidden>
+     <p>Sattva <b id="v_sattva">–</b><span id="b_sattva"></span> Rajas <b id="v_rajas">–</b><span id="b_rajas"></span> Tamas <b id="v_tamas">–</b><span id="b_tamas"></span> Agreement <b id="ag">–</b></p>
+    </div>
+   </details>
+   <div class="foot"><button class="btn ghost" id="stop">Stop camera</button><button class="btn ghost" id="exp">Export CSV</button></div>
+  </div>
+ </div>
+</section>
+</main>
+
+<div class="scrim" id="scrim"></div>
+<aside id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
+ <h2 id="drawerTitle">Check in</h2>
+ <p class="dusk">Rate the last minute of <b id="reportPhase">Baseline</b>. Slide each bar to set it; bars you do not touch are not saved.</p>
+ <div class="rate" data-t="0"><div class="head"><label for="rStress">Stress</label><output id="oStress">–</output></div><input type="range" id="rStress" min="0" max="10" step="1" value="5"><div class="scale"><span>None</span><span>Very high</span></div></div>
+ <div class="rate" data-t="0"><div class="head"><label for="rSattva">Calm and clear <span class="sub">Sattva</span></label><output id="oSattva">–</output></div><input type="range" id="rSattva" min="0" max="10" step="1" value="5"><div class="scale"><span>Not at all</span><span>Completely</span></div></div>
+ <div class="rate" data-t="0"><div class="head"><label for="rRajas">Restless or agitated <span class="sub">Rajas</span></label><output id="oRajas">–</output></div><input type="range" id="rRajas" min="0" max="10" step="1" value="5"><div class="scale"><span>Not at all</span><span>Completely</span></div></div>
+ <div class="rate" data-t="0"><div class="head"><label for="rTamas">Dull or sluggish <span class="sub">Tamas</span></label><output id="oTamas">–</output></div><input type="range" id="rTamas" min="0" max="10" step="1" value="5"><div class="scale"><span>Not at all</span><span>Completely</span></div></div>
+ <p class="small" id="reportMsg" role="alert" style="color:var(--madder);min-height:1.5em"></p>
+ <div class="act"><button class="btn" id="saveReport">Save check-in</button><button class="btn ghost" id="cancelReport">Cancel</button></div>
+</aside>
+<div id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

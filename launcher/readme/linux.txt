@@ -1,0 +1,8 @@
+TEMPO for Linux (64-bit)
+
+1. In a terminal:  chmod +x Tempo && ./Tempo
+2. Your browser opens at http://localhost:8000 . Allow the camera.
+3. The very first run downloads two small model files (about 10 MB) from Google's MediaPipe host.
+   After that Tempo works without internet.
+4. To quit, close the browser tab. Tempo stops by itself about 3 minutes later (or press Ctrl+C).
+Log: ~/.cache/Tempo/tempo.log

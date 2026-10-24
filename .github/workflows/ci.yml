@@ -1,0 +1,29 @@
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node --check app.js
+      - run: node --check ui.js
+      - run: node --check hr.js
+      - run: node --test tests/ui.test.mjs tests/hr.test.mjs
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m py_compile train_guna.py tools/make_synthetic.py tools/audit_features.py
+      - name: Trainer smoke test on synthetic data
+        run: |
+          mkdir -p data
+          python tools/make_synthetic.py signal data/sessions.csv
+          python train_guna.py
