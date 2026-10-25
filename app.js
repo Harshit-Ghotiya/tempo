@@ -2,6 +2,7 @@
 import {createTracker,isSkin} from './hr.js';
 import {initAffect,evalAffect} from './affect.js';
 import {createVoiceMonitor} from './voice.js';
+import {createTrend} from './chart.js';
 import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
@@ -193,15 +194,15 @@ const phaseNow=()=>document.querySelector('input[name=phase]:checked').value;
 const mmss=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 const presence=()=>{const r=fbuf.slice(-30);return r.length?r.filter(o=>o.ok).length/r.length:0};
 let idxSeries=[],tensionS=null;
+const trend=createTrend($('trend'));
 buildRows('rowsFace',ROWS.face);buildRows('rowsPose',ROWS.pose);RATE.forEach(initRate);
 
 const stateOf=v=>v==null?'Not enough signal yet':v<-.75?'More relaxed than your baseline':v<=.75?'Near your baseline':v<=1.5?'Somewhat above your baseline':'Well above your baseline';
 function show(x,z,q,el,all,ag,tn,af,status){
- if(tn!==null)idxSeries.push({t:el,v:tn});
- idxSeries=idxSeries.filter(p=>p.t>el-180);
+ if(tn!==null)trend.push(el,tn);
  $('stateWord').textContent=stateOf(tn);$('stateNum').textContent=tn===null?'–':(tn>=0?'+':'−')+Math.abs(tn).toFixed(1);
  $('idxHead').classList.toggle('on',tn!==null);
- drawSpark($('idxPath'),$('idxHead'),idxSeries,el,{fixed:[-3,3]});
+ const pe=$('idxPulse');if(pe)pe.classList.toggle('on',tn!==null);
  $('pulseBox').hidden=!use.pulse;
  if(use.pulse){const hr=x.hr??null,hrv=x.hrv??null;tweenNum($('hrNum'),hr);tweenNum($('hrvNum'),hrv);$('hrNote').textContent=hr!==null?'experimental estimate':'no clear pulse signal'}
  for(const [k] of [...ROWS.face,...ROWS.pose])setRow(k,x[k],z[k]);
@@ -234,7 +235,7 @@ function tick(){
   if(el>=SETTLE_S+WIN_S)for(const k in x)if(FEAT[k]&&(q[FEAT[k]]??0)>MIN_Q)(cal[k]??=[]).push(x[k]);
   setup(el,x,q);
  }else{
-  if(document.body.dataset.stage==='setup'){stage('live');toast('Baseline set. You are live.')}
+  if(document.body.dataset.stage==='setup'){stage('live');toast('Baseline set. You are live.');trend.mark(el,'baseline')}
   // Robust baseline: median and MAD, floored at 10% of the median because overlapping windows understate spread.
   if(!base){base={};for(const k in cal)if(cal[k].length>=MIN_CAL_N){const m=median(cal[k]);base[k]={m,s:Math.max(1.4826*median(cal[k].map(v=>Math.abs(v-m))),.1*Math.abs(m),FLOOR[k]??1e-3)}}}
   const miss=Object.keys(FEAT).filter(k=>({face:use.face,rppg:use.pulse,pose:use.pose})[FEAT[k]]&&!base[k]);
@@ -268,6 +269,7 @@ function tick(){
 $('phaseSeg').addEventListener('change',()=>{
  phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
  $('reportPhase').textContent=PHASE[phaseNow()];
+ trend.mark(phaseStart,phaseNow());
  toast(`Phase: ${PHASE[phaseNow()]}. Check in at its end, before you switch.`);
 });
 const closeDrawer=()=>drawer(false);
@@ -282,6 +284,7 @@ $('saveReport').onclick=()=>{
  if(tt<CAL_END){$('reportMsg').textContent='Wait until setup has finished.';return}
  const sum=s+r+t;
  reports.push({sattva:s/sum,rajas:r/sum,tamas:t/sum,raw_sattva:s,raw_rajas:r,raw_tamas:t,raw_stress:st,stress_label:st/10,t:tt,phase});
+ trend.check(tt,st);
  RATE.forEach(resetRate);closeDrawer();
  toast(`Check-in saved for ${PHASE[phase]}. It labels the last ${LABEL_SPAN_S} s of this phase.`);
 };
@@ -305,6 +308,7 @@ $('go').onclick=async()=>{
  fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;
  if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q)):null;
  reports=[];idxSeries=[];tensionS=null;phaseStart=CAL_END;
+ trend.reset();trend.start(()=>(performance.now()-start)/1e3);
  document.querySelector('input[name=phase][value=baseline]').checked=true;$('reportPhase').textContent='Baseline';
  $('who').textContent=`${participantId} (${sessionId})`;$('cam').classList.add('on');
  stage('setup');
@@ -312,7 +316,7 @@ $('go').onclick=async()=>{
 };
 
 $('stop').onclick=()=>{
- running=false;clearInterval(timer);if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
+ running=false;clearInterval(timer);trend.stop();if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
 };

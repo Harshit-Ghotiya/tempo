@@ -164,12 +164,22 @@
      </div>
     </div>
     <p class="dusk small">Facial tension compared with your own baseline. Experimental: the weights come from the literature and are not yet validated.</p>
-    <svg class="spark" viewBox="0 0 600 130" aria-hidden="true">
-     <rect id="idxBand" x="0" y="51.3" width="600" height="27.5" rx="8"/>
-     <path id="idxPath" pathLength="1" d=""/>
-     <circle id="idxHead" r="5" cx="-20" cy="-20"/>
-    </svg>
-    <div class="axis"><span>3 minutes ago</span><span>now</span></div>
+    <div class="trendwrap">
+     <svg id="trend" class="trend" viewBox="0 0 600 220" role="img" aria-label="Facial tension over the last 3 minutes">
+      <defs>
+       <linearGradient id="trendStroke" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="220">
+        <stop offset="0"/><stop offset=".25"/><stop offset=".5"/><stop offset=".75"/><stop offset="1"/>
+       </linearGradient>
+      </defs>
+      <g id="trendGrid"></g><g id="trendZones"></g><g id="trendPhases"></g>
+      <rect id="idxBand" x="0" y="0" width="0" height="0" rx="6"/>
+      <line id="trendZero" x1="0" x2="0" y1="0" y2="0"/>
+      <path id="idxArea" d=""/><path id="idxGlow" d=""/><path id="idxPath" d=""/>
+      <g id="trendChecks"></g>
+      <circle id="idxPulse" r="5" cx="-20" cy="-20"/><circle id="idxHead" r="5" cx="-20" cy="-20"/>
+     </svg>
+     <div class="axis"><span>−3 min</span><span>−2 min</span><span>−1 min</span><span>now</span></div>
+    </div>
    </div>
 
    <div class="tiles-grid">

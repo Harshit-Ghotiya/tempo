@@ -197,3 +197,43 @@ test('launcher copies every module the page loads', () => {
     assert.ok(cpLine.includes(file), `launcher/build.sh cp line missing file: ${file}`);
   }
 });
+
+test('chart.js: math utilities, range, segments, zones and smoothPath', async () => {
+  const { zoneOf, niceRange, segments, smoothPath, ema } = await import('../chart.js');
+  assert.equal(zoneOf(-0.75), 'base');
+  assert.equal(zoneOf(0.75), 'base');
+  assert.equal(zoneOf(0.76), 'up');
+  assert.equal(zoneOf(1.5), 'up');
+  assert.equal(zoneOf(1.51), 'high');
+  assert.equal(zoneOf(-0.76), 'relaxed');
+  assert.equal(zoneOf(null), null);
+
+  assert.deepEqual(niceRange([]), [-1, 1.5]);
+  assert.equal(niceRange([2.9])[1], 3);
+  assert.equal(niceRange([-2])[0], -2.25);
+
+  const segs = segments([{ t: 0, v: 1 }, { t: 1, v: 2 }, { t: 5, v: 3 }, { t: 6, v: null }, { t: 7, v: 4 }]);
+  assert.equal(segs.length, 3);
+  assert.equal(segs[0].length, 2);
+
+  assert.equal(ema(0, 1), 0);
+  assert.ok(Math.abs(ema(1e6, 1) - 1) < 1e-6);
+  assert.ok(Math.abs(ema(0.25, 1.5) - (1 - Math.exp(-0.25 / 1.5))) < 1e-9);
+
+  const p = smoothPath([{ x: 0, y: 0 }, { x: 10, y: 5 }, { x: 20, y: 10 }]);
+  assert.ok(p.startsWith('M0.0 0.0C'));
+});
+
+test('createTrend SVG renderer: builds curves and places head', async () => {
+  const { createTrend } = await import('../chart.js');
+  const svg = $('trend');
+  const tr = createTrend(svg);
+  tr.push(1, 0.2);
+  tr.push(2, 0.5);
+  tr.push(3, 0.8);
+  tr.render(10, 0.033);
+  const d = $('idxPath').getAttribute('d');
+  assert.ok(d.startsWith('M') && d.includes('C'), `path d was: ${d}`);
+  const cx = Number($('idxHead').getAttribute('cx'));
+  assert.ok(Number.isFinite(cx) && cx > 0);
+});

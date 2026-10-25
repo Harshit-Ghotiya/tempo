@@ -1,10 +1,22 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.0 (Apple-style design system, real-time stress signals, packaged apps, on top of v0.6)  
+**Project version:** v0.7.1 (smooth SVG trend chart with zones, on top of v0.7.0)  
 **Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.1 update (2026-10-26): smooth zone-colored trend chart and phase markers (feat/trend-chart)
+
+Changed
+1. `chart.js`: Added an SVG trend chart renderer featuring monotone cubic spline interpolation (Fritsch-Carlson, preventing overshoot), dynamic auto-ranging (`niceRange`), multi-zone tinting (relaxed, baseline, elevated, high), and live rAF render loop capped at 30 fps.
+2. `index.html`: Replaced flat static sparkline SVG with dynamic `#trend` SVG including gradient strokes, area fill under the curve, gridlines, phase region tints, check-in markers, and animated pulse ring on the active head indicator.
+3. `app.js`: Integrated `createTrend` into live lifecycle (`show`, `go`, `stop`, phase change markers, and check-in score markers).
+4. `launcher/build.sh` & `.github/workflows/ci.yml`: Added `chart.js` to build copy list and automated CI syntax checks.
+5. `tests/ui.test.mjs`: Added unit tests verifying `chart.js` mathematical utilities (`zoneOf`, `niceRange`, `segments`, `smoothPath`, `ema`) and JSDOM SVG curve rendering.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (28 tests pass).
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.0 update (2026-10-26): Apple-style design system and theme switcher (feat/ui-design-system)
 

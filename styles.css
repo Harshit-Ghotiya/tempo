@@ -663,34 +663,78 @@ body[data-stage=live] .cam-badge-live { display: inline-flex; }
 }
 .statenum-sub { font-size: 12px; color: var(--text-2); margin-top: 3px; }
 
-.spark {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 14px 0 6px;
-  overflow: visible;
-}
-#idxBand { fill: var(--fill); opacity: .7; }
-.spark path {
+/* Trend Chart */
+.trendwrap { position: relative; width: 100%; margin: 12px 0 6px; }
+.trend { display: block; width: 100%; height: auto; overflow: visible; }
+#trendStroke stop:nth-child(1) { stop-color: var(--z-high); }
+#trendStroke stop:nth-child(2) { stop-color: var(--z-up); }
+#trendStroke stop:nth-child(3) { stop-color: var(--yellow); }
+#trendStroke stop:nth-child(4) { stop-color: var(--z-base); }
+#trendStroke stop:nth-child(5) { stop-color: var(--z-relaxed); }
+
+#idxPath {
   fill: none;
-  stroke: var(--orange);
+  stroke: url(#trendStroke);
   stroke-width: 2.8;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
-.spark circle {
-  fill: var(--orange);
+#idxGlow {
+  fill: none;
+  stroke: url(#trendStroke);
+  stroke-width: 10;
+  opacity: .16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+#idxArea {
+  fill: url(#trendStroke);
+  opacity: .08;
+}
+#idxBand {
+  fill: var(--green);
+  opacity: .07;
+}
+#trendZero {
+  stroke: var(--text-3);
+  stroke-dasharray: 3 4;
+  opacity: .5;
+}
+#idxHead {
+  fill: #ffffff;
+  stroke-width: 3;
+  stroke: var(--z-base);
   opacity: 0;
   transition: opacity .4s;
   transform-box: fill-box;
   transform-origin: center;
 }
-.spark circle.on {
-  opacity: 1;
-  animation: beat var(--beat, 2.4s) ease-in-out infinite;
+#idxHead.on { opacity: 1; }
+.trend[data-zone="up"] #idxHead { stroke: var(--z-up); }
+.trend[data-zone="high"] #idxHead { stroke: var(--z-high); }
+.trend[data-zone="relaxed"] #idxHead { stroke: var(--z-relaxed); }
+.trend[data-zone="base"] #idxHead { stroke: var(--z-base); }
+
+#idxPulse {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
 }
-@keyframes beat { 0%, 100% { transform: scale(1); } 14% { transform: scale(1.6); } 32% { transform: scale(1); } }
+#idxHead.on ~ #idxPulse, #idxHead.on {
+  opacity: 1;
+}
+#idxHead.on ~ #idxPulse {
+  animation: pulse-ring 2.4s cubic-bezier(.215,.61,.355,1) infinite;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: .8; }
+  100% { transform: scale(2.8); opacity: 0; }
+}
 
 .axis {
   display: flex;
