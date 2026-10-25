@@ -111,6 +111,22 @@ function frame(v,t){
     if(n>=20)rgb.push({t,r:s[0]/n,g:s[1]/n,b:s[2]/n});
     else if(nf)rgb.push({t,r:fb[0]/nf,g:fb[1]/nf,b:fb[2]/nf});
    }
+   const mcv=$('meshCv'),mcx=mcv?.getContext?.('2d');
+   if(mcx&&$('uMesh')?.checked){
+    const W=v.videoWidth,H=v.videoHeight;
+    if(mcv.width!==W||mcv.height!==H){mcv.width=W;mcv.height=H}
+    mcx.clearRect(0,0,W,H);
+    mcx.fillStyle='rgba(255,255,255,0.75)';
+    const pts=[70,63,105,66,107,336,296,334,293,300,33,160,158,133,153,144,362,385,387,263,373,380,468,473,1,2,98,327,168,6,197,195,5,4,61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409,10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+    for(const idx of pts){const pt=L[idx];if(pt){mcx.beginPath();mcx.arc(pt.x*W,pt.y*H,1.5,0,6.283);mcx.fill()}}
+    if(use.pulse){
+     mcx.strokeStyle='rgba(255,69,58,0.75)';mcx.lineWidth=1.5;
+     const fw=Math.abs(L[454].x-L[234].x)*W;
+     for(const[c,hx,hy]of[[L[151],.14*fw,.05*fw],[L[50],.07*fw,.07*fw],[L[280],.07*fw,.07*fw]]){
+      mcx.strokeRect(c.x*W-hx,c.y*H-hy,2*hx,2*hy);
+     }
+    }
+   }else if(mcx&&mcv.width){mcx.clearRect(0,0,mcv.width,mcv.height)}
   }
   fbuf.push(o);
  }
@@ -434,6 +450,7 @@ $('go').onclick=async()=>{
 
 $('stop').onclick=()=>{
  running=false;clearInterval(timer);clearInterval(liveTimer);trend.stop();if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
+ $('meshCv')?.getContext?.('2d')?.clearRect(0,0,640,480);
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
  if(reports.length>0)showSummary();

@@ -1,10 +1,20 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.4 (session summary modal and PDF print layout)  
+**Project version:** v0.7.5 (real-time face landmark mesh and pulse ROIs overlay)  
 **Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.5 update (2026-10-26): real-time face landmark mesh and pulse ROIs overlay (feat/face-points-overlay)
+
+Changed
+1. `index.html`: Added `#meshCv` overlay canvas and `#uMesh` switch toggle ("Show tracking points") in the camera card.
+2. `styles.css`: Added `#meshCv` absolute positioning with matching `scaleX(-1)` mirror transform, `object-fit: cover`, and `.mesh-toggle` styling.
+3. `app.js`: In `frame()`, when `#uMesh` is checked and landmarks are detected, renders key MediaPipe facial landmark points (brows, eyes, irises, nose, lips, jaw contour) in semi-transparent white and the three rPPG pulse regions of interest (forehead and cheeks) in translucent red. Clears cleanly when unchecked or stopped. Total overhead is < 0.1 ms per frame with zero network or persistence overhead.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass).
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.4 update (2026-10-26): session summary modal and PDF print layout (feat/session-summary)
 

@@ -100,11 +100,15 @@
  <div class="cam">
   <div class="camcard">
    <video id="cam" playsinline muted></video>
+   <canvas id="meshCv" aria-hidden="true"></canvas>
    <div class="cam-badge-live" id="liveBadge"><span class="live-dot"></span>LIVE</div>
    <div class="cam-badge-secure">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1a3.5 3.5 0 0 0-3.5 3.5V6H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-.5V4.5A3.5 3.5 0 0 0 8 1zm2 5H6V4.5a2 2 0 1 1 4 0V6z"/></svg>
     On-device
    </div>
+  </div>
+  <div class="cam-controls">
+   <label class="mesh-toggle"><input type="checkbox" id="uMesh" switch role="switch"><span>Show tracking points</span></label>
   </div>
   <div class="dots">
    <span class="signal-chip"><i class="dot" id="dFace"></i>Face</span>
