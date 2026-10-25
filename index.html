@@ -267,6 +267,10 @@
 
    <div class="foot col-12">
     <button class="btn danger" id="stop">Stop camera</button>
+    <button class="btn ghost" id="openSummary">
+     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+     Session summary
+    </button>
     <button class="btn ghost" id="exp">
      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg>
      Export CSV
@@ -307,6 +311,29 @@
   <button class="btn ghost" id="cancelReport">Cancel</button>
  </div>
 </aside>
+
+<dialog id="summary" closedby="any" aria-labelledby="sumTitle">
+ <header class="sumhead">
+  <div>
+   <p class="eyebrow">Session summary</p>
+   <h2 id="sumTitle">How your session went</h2>
+   <p id="sumMeta" class="summeta"></p>
+  </div>
+  <button id="sumClose" class="iconbtn" aria-label="Close summary">×</button>
+ </header>
+ <section id="sumPhases" class="sumphases"></section>
+ <figure class="sumfig">
+  <svg id="sumChart" viewBox="0 0 800 220" role="img" aria-label="Facial tension over the whole session"></svg>
+  <figcaption>Facial tension index (10 s rolling windows) across the session; check-ins marked.</figcaption>
+ </figure>
+ <section id="sumChecks" class="sumchecks"></section>
+ <p class="disclaimer">One session from one person. The tension index and Triguna use literature-based priors that are not clinically validated. Not a diagnostic tool.</p>
+ <div class="act">
+  <button class="btn" id="sumPrint">Save as PDF</button>
+  <button class="btn ghost" id="sumDone">Close</button>
+ </div>
+</dialog>
+
 <div id="toast" role="status" aria-live="polite"></div>
 <script type="module" src="app.js"></script>
 </body>

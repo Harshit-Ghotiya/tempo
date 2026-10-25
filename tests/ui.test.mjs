@@ -310,3 +310,84 @@ test('pulse tile: light coach heuristics, plausibility gating and hrView hold st
   assert.equal(hrvShown(10, 0.6), null, 'rejects < 15 ms');
   assert.equal(hrvShown(45, 0.3), null, 'rejects low quality q < 0.45');
 });
+
+test('session summary: phaseStats aggregation, directionChecks agreement and renderSummary DOM', async () => {
+  const { phaseStats, directionChecks } = await import('../summary.js');
+
+  // Synthetic session: 3 phases, transition rows flagged, reports at end of phases
+  const log = [];
+  for (let t = 0; t < 90; t++) {
+    log.push({
+      t, window_start_s: Math.max(0, t - 10), window_end_s: t,
+      phase: 'baseline', transition: t < 10, tension_idx: 0.1, hr: 70
+    });
+  }
+  for (let t = 90; t < 180; t++) {
+    log.push({
+      t, window_start_s: t - 10, window_end_s: t,
+      phase: 'stressor', transition: t < 100, tension_idx: 0.7, hr: 85
+    });
+  }
+  for (let t = 180; t < 270; t++) {
+    log.push({
+      t, window_start_s: t - 10, window_end_s: t,
+      phase: 'recovery', transition: t < 190, tension_idx: 0.4, hr: 72
+    });
+  }
+
+  const reports = [
+    { phase: 'baseline', raw_stress: 4, t: 85 },
+    { phase: 'stressor', raw_stress: 8, t: 175 },
+    { phase: 'recovery', raw_stress: 3, t: 265 }
+  ];
+
+  const stats = phaseStats(log, reports, 60);
+  assert.equal(stats.length, 3);
+  assert.equal(stats[0].phase, 'baseline');
+  assert.equal(stats[0].basis, 'last 60 s before check-in');
+  assert.ok(Math.abs(stats[0].tension.mean - 0.1) < 1e-6);
+  assert.ok(Math.abs(stats[1].tension.mean - 0.7) < 1e-6);
+  assert.ok(Math.abs(stats[2].tension.mean - 0.4) < 1e-6);
+
+  // Direction checks
+  const checks = directionChecks(stats);
+  assert.equal(checks.length, 2);
+  // Baseline -> Stressor: Stress 4 -> 8 (you = 1), Tension 0.1 -> 0.7 (tempo = 1) => agree
+  assert.equal(checks[0].from, 'baseline');
+  assert.equal(checks[0].to, 'stressor');
+  assert.equal(checks[0].you, 1);
+  assert.equal(checks[0].tempo, 1);
+  assert.equal(checks[0].agree, true);
+
+  // Stressor -> Recovery: Stress 8 -> 3 (you = -1), Tension 0.7 -> 0.4 (tempo = -1) => agree
+  assert.equal(checks[1].from, 'stressor');
+  assert.equal(checks[1].to, 'recovery');
+  assert.equal(checks[1].you, -1);
+  assert.equal(checks[1].tempo, -1);
+  assert.equal(checks[1].agree, true);
+
+  // Dead-band check
+  const deadChecks = directionChecks(stats, { dTension: 0.5, dStress: 5 });
+  assert.equal(deadChecks[1].tempo, 0, 'drop 0.3 is inside 0.5 margin -> 0');
+
+  // Fallback when a phase has no report
+  const partialStats = phaseStats(log, reports.slice(0, 2));
+  assert.equal(partialStats[2].basis, 'whole phase (clean windows)');
+  const partialChecks = directionChecks(partialStats);
+  assert.equal(partialChecks[1].you, null);
+  assert.equal(partialChecks[1].agree, null);
+
+  // renderSummary in JSDOM
+  ui.renderSummary(stats, checks, log, {
+    participantId: 'P101',
+    sessionId: 'S02',
+    durationS: 270,
+    reportCount: 3
+  });
+
+  assert.match($('sumMeta').textContent, /P101/);
+  assert.match($('sumMeta').textContent, /S02/);
+  assert.equal(document.querySelectorAll('.sumphase-card').length, 3);
+  assert.equal(document.querySelectorAll('.sumcheck-row').length, 2);
+  assert.ok($('sumChart').innerHTML.length > 50);
+});

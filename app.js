@@ -1,9 +1,10 @@
-// Tempo v0.7.2: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
+// Tempo v0.7.4: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
 import {createTracker,isSkin} from './hr.js';
 import {initAffect,evalAffect} from './affect.js';
 import {createVoiceMonitor} from './voice.js';
 import {createTrend,ema} from './chart.js';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown} from './ui.js';
+import {phaseStats,directionChecks} from './summary.js';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -435,7 +436,22 @@ $('stop').onclick=()=>{
  running=false;clearInterval(timer);clearInterval(liveTimer);trend.stop();if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
+ if(reports.length>0)showSummary();
 };
+
+const showSummary=()=>{
+ const dur=start?(performance.now()-start)/1e3:0;
+ const stats=phaseStats(log,reports);
+ const checks=directionChecks(stats);
+ renderSummary(stats,checks,log,{participantId,sessionId,durationS:dur,reportCount:reports.length});
+ openDialog($('summary'));
+};
+
+setupDialogDismiss($('summary'));
+$('sumClose').onclick=()=>closeDialog($('summary'));
+$('sumDone').onclick=()=>closeDialog($('summary'));
+$('sumPrint').onclick=()=>window.print();
+$('openSummary').onclick=showSummary;
 
 // Retrospective labelling, applied at export (a label needs a report that arrives after the window).
 // A window takes a self-report's label only if it lies wholly inside the reported phase, shares its phase,

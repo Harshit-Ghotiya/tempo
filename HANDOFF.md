@@ -1,10 +1,24 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.3 (pulse tile with light coach, beating heart, and late HR baseline)  
+**Project version:** v0.7.4 (session summary modal and PDF print layout)  
 **Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.4 update (2026-10-26): session summary modal and PDF print layout (feat/session-summary)
+
+Changed
+1. `summary.js`: Added pure session statistical aggregation module with `phaseStats(log, reports, span = 60)` computing tension mean/peak, valence/arousal, pulse stats, and Triguna probabilities across session phases, and `directionChecks(stats)` verifying directional alignment between self-reported stress ratings and measured biometric tension.
+2. `index.html`: Added `<dialog id="summary" closedby="any">` with `#sumTitle`, `#sumMeta`, `#sumPhases` (phase comparison cards), `#sumChart` (full session tension curve with check-in labels), `#sumChecks` (direction agreement checklist), print button `#sumPrint`, and footer trigger button `#openSummary`.
+3. `styles.css`: Added Apple-style modal styling with blurred backdrop, responsive phase cards, and print styles (`@media print`) so "Save as PDF" produces a clean, slide-ready one-page presentation document.
+4. `ui.js`: Implemented `openDialog`, `closeDialog`, `setupDialogDismiss` (including Safari click-outside fallback), and `renderSummary` rendering the SVG session chart, phase comparison cards, and direction checks.
+5. `app.js`: Automatically triggers `showSummary()` when stopping a session that has at least one check-in, or on demand via `#openSummary`.
+6. `launcher/build.sh` & `.github/workflows/ci.yml`: Added `summary.js` to build copy list and automated CI syntax checks.
+7. `tests/ui.test.mjs`: Added unit tests for `phaseStats`, `directionChecks`, dead-band thresholding, missing report fallback, and `renderSummary` DOM elements.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass).
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.3 update (2026-10-26): pulse tile with light coach, beating heart, and late HR baseline (feat/pulse-tile-light-coach)
 

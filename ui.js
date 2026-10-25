@@ -1,4 +1,5 @@
 // ui.js: small DOM helpers for the Tempo portal. No camera or MediaPipe code, so Node + jsdom can test it.
+import { smoothPath, niceRange, segments, zoneOf } from './chart.js';
 export const $ = id => document.getElementById(id);
 export const stage = n => { document.body.dataset.stage = n; };
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -159,3 +160,173 @@ export function hrView(last, now, holdS = 10) {
 }
 
 export const hrvShown = (hrv, q) => Number.isFinite(hrv) && hrv >= 15 && hrv <= 150 && (q ?? 0) >= 0.45 ? hrv : null;
+
+// Modal dialog helpers
+export function openDialog(d) {
+  if (!d) return;
+  if (typeof d.showModal === 'function') {
+    try { d.showModal(); } catch (e) { d.setAttribute('open', ''); }
+  } else {
+    d.setAttribute('open', '');
+  }
+}
+
+export function closeDialog(d) {
+  if (!d) return;
+  if (typeof d.close === 'function') d.close();
+  else d.removeAttribute('open');
+}
+
+export function setupDialogDismiss(d) {
+  if (!d) return;
+  if (typeof HTMLDialogElement !== 'undefined' && !('closedBy' in HTMLDialogElement.prototype)) {
+    d.addEventListener('click', e => {
+      const rect = d.getBoundingClientRect();
+      const inDialog = (
+        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+        rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+      );
+      if (!inDialog) closeDialog(d);
+    });
+  }
+}
+
+const PHASE_COLORS = { baseline: 'var(--green)', stressor: 'var(--orange)', recovery: 'var(--teal)' };
+const ZONE_LABELS = { relaxed: 'Relaxed', base: 'Near baseline', up: 'Elevated', high: 'High tension' };
+
+export function renderSummary(stats, checks, log = [], meta = {}) {
+  const sumMeta = $('sumMeta');
+  if (sumMeta) {
+    const mins = Math.floor((meta.durationS ?? 0) / 60);
+    const secs = Math.round((meta.durationS ?? 0) % 60);
+    sumMeta.textContent = `${meta.participantId || 'Participant'} · ${meta.sessionId || 'Session'} · ${mins}m ${String(secs).padStart(2, '0')}s · ${meta.reportCount ?? 0} check-in(s)`;
+  }
+
+  // 1. Phase cards
+  const sumPhases = $('sumPhases');
+  if (sumPhases) {
+    sumPhases.innerHTML = (stats || []).map(s => {
+      const color = PHASE_COLORS[s.phase] || 'var(--text-3)';
+      const repHtml = s.report ? `
+        <div class="sum-stat-big">${s.report.stress}/10</div>
+        <div class="sum-bar-track"><div class="sum-bar-fill" style="width:${Math.min(100, Math.max(0, s.report.stress * 10))}%"></div></div>
+      ` : '<div class="sum-subtext dusk">No check-in rating</div>';
+
+      const zn = zoneOf(s.tension.mean);
+      const znLabel = zn ? ZONE_LABELS[zn] : '';
+      const tnStr = s.tension.mean != null ? `${s.tension.mean >= 0 ? '+' : '−'}${Math.abs(s.tension.mean).toFixed(2)}` : '–';
+      const pkStr = s.tension.peak != null ? `Peak: ${s.tension.peak >= 0 ? '+' : '−'}${Math.abs(s.tension.peak).toFixed(2)}` : '';
+      const hrStr = s.hr.mean != null ? `Pulse: ${Math.round(s.hr.mean)} bpm (${s.hr.n} readings)` : 'No pulse lock';
+      const valStr = s.valence != null ? `Valence: ${s.valence.toFixed(2)} · Arousal: ${s.arousal.toFixed(2)}` : '';
+
+      return `
+        <div class="sumphase-card" style="--phase-color:${color}">
+          <div class="sumphase-head">
+            <h3 class="sumphase-title">${s.phase}</h3>
+          </div>
+          <p class="sumphase-basis">${s.basis} (${s.n} windows)</p>
+          <div class="sum-compare">
+            <div>
+              <div class="sum-col-label">You reported</div>
+              ${repHtml}
+            </div>
+            <div>
+              <div class="sum-col-label">Tempo measured</div>
+              <div class="sum-stat-big">${tnStr} <span style="font-size:14px;color:var(--text-2);font-family:var(--font-display)">${znLabel}</span></div>
+              <div class="sum-subtext">${[pkStr, hrStr, valStr].filter(Boolean).join('<br>')}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  // 2. Whole session chart
+  const svg = $('sumChart');
+  if (svg) {
+    const valid = (log || []).filter(r => typeof r.tension_idx === 'number' && Number.isFinite(r.tension_idx));
+    const maxT = Math.max(60, (log && log.length) ? log[log.length - 1].t : 60);
+    const [lo, hi] = niceRange(valid.map(r => r.tension_idx));
+    const W = 800, H = 220, padT = 20, padB = 30, padL = 40, padR = 25;
+    const xOf = t => padL + (Math.max(0, Math.min(maxT, t)) / maxT) * (W - padL - padR);
+    const yOf = v => padT + ((hi - Math.max(lo, Math.min(hi, v))) / (hi - lo || 1)) * (H - padT - padB);
+
+    // Phase background tints
+    let phaseRects = '';
+    const phaseChanges = [];
+    let curP = null;
+    for (const r of (log || [])) {
+      if (r.phase && r.phase !== curP) {
+        phaseChanges.push({ phase: r.phase, t: r.t });
+        curP = r.phase;
+      }
+    }
+    for (let i = 0; i < phaseChanges.length; i++) {
+      const pc = phaseChanges[i];
+      const nextT = i < phaseChanges.length - 1 ? phaseChanges[i + 1].t : maxT;
+      const x1 = xOf(pc.t), x2 = xOf(nextT);
+      const fill = pc.phase === 'stressor' ? 'rgba(255,149,0,0.08)' : pc.phase === 'recovery' ? 'rgba(48,176,199,0.08)' : 'transparent';
+      phaseRects += `<rect x="${x1.toFixed(1)}" y="${padT}" width="${Math.max(0, x2 - x1).toFixed(1)}" height="${H - padT - padB}" fill="${fill}"/>`;
+      phaseRects += `<text x="${(x1 + 6).toFixed(1)}" y="${padT + 14}" fill="var(--text-3)" font-size="10" font-weight="600" text-transform="uppercase">${pc.phase}</text>`;
+    }
+
+    // Zero line
+    const y0 = yOf(0);
+    const zeroLine = `<line x1="${padL}" y1="${y0.toFixed(1)}" x2="${W - padR}" y2="${y0.toFixed(1)}" stroke="var(--text-3)" stroke-dasharray="3 4" opacity="0.5"/>`;
+
+    // Segments and path
+    const segs = segments(valid.map(r => ({ t: r.t, v: r.tension_idx })));
+    const pathD = segs.map(s => smoothPath(s.map(pt => ({ x: xOf(pt.t), y: yOf(pt.v) })))).join(' ');
+
+    // Check-in markers
+    let checkMarks = '';
+    const reps = (stats || []).map(s => s.report).filter(Boolean);
+    for (const rep of reps) {
+      const cx = xOf(rep.t);
+      const near = valid.reduce((best, r) => Math.abs(r.t - rep.t) < Math.abs(best.t - rep.t) ? r : best, valid[0] || { tension_idx: 0 });
+      const cy = near ? yOf(near.tension_idx) : yOf(0);
+      checkMarks += `
+        <line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${H - padB}" stroke="var(--line)" stroke-width="1"/>
+        <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4.5" fill="var(--accent)" stroke="#ffffff" stroke-width="2"/>
+        <text x="${cx.toFixed(1)}" y="${(cy - 9).toFixed(1)}" fill="var(--text)" font-size="11" font-weight="700" text-anchor="middle">${rep.stress}/10</text>
+      `;
+    }
+
+    // Time axis ticks
+    const t0 = '0:00', tMid = `${Math.floor(maxT / 120)}:${String(Math.floor((maxT / 2) % 60)).padStart(2, '0')}`, tEnd = `${Math.floor(maxT / 60)}:${String(Math.floor(maxT % 60)).padStart(2, '0')}`;
+    const timeAxis = `
+      <text x="${padL}" y="${H - 10}" fill="var(--text-3)" font-size="10">${t0}</text>
+      <text x="${W / 2}" y="${H - 10}" fill="var(--text-3)" font-size="10" text-anchor="middle">${tMid}</text>
+      <text x="${W - padR}" y="${H - 10}" fill="var(--text-3)" font-size="10" text-anchor="end">${tEnd}</text>
+    `;
+
+    svg.innerHTML = `
+      ${phaseRects}
+      ${zeroLine}
+      <path d="${pathD}" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      ${checkMarks}
+      ${timeAxis}
+    `;
+  }
+
+  // 3. Direction checks
+  const sumChecks = $('sumChecks');
+  if (sumChecks) {
+    const arrow = s => s == null ? '–' : s > 0 ? '↑ rise' : s < 0 ? '↓ drop' : '→ steady';
+    sumChecks.innerHTML = (checks || []).map(c => {
+      const statusClass = c.agree === true ? 'agree' : c.agree === false ? 'diff' : 'na';
+      const statusText = c.agree === true ? '✓ Same direction' : c.agree === false ? '✗ Different direction' : 'Not enough data';
+      const fromName = c.from.charAt(0).toUpperCase() + c.from.slice(1);
+      const toName = c.to.charAt(0).toUpperCase() + c.to.slice(1);
+      return `
+        <div class="sumcheck-row">
+          <div class="sumcheck-trans">${fromName} → ${toName}</div>
+          <div>You reported: <b>${arrow(c.you)}</b></div>
+          <div>Tempo measured: <b>${arrow(c.tempo)}</b></div>
+          <div class="sumcheck-res ${statusClass}">${statusText}</div>
+        </div>
+      `;
+    }).join('');
+  }
+}
+
