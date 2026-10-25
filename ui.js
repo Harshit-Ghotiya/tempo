@@ -125,3 +125,37 @@ export function drawer(open) {
   $('drawer').setAttribute('aria-hidden', String(!open));
   if (open) $('rStress').focus({ preventScroll: true });
 }
+
+// Light coach and pulse heuristics
+export const LIGHT = { DIM_LUMA: 70, WARM_RG: 1.75 };
+export function lightOf(samples, now, spanMs = 2000) {
+  if (!samples || !samples.length) return null;
+  const cutoff = now - spanMs;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = samples.length - 1; i >= 0; i--) {
+    const s = samples[i];
+    if (s.t < cutoff) break;
+    r += s.r; g += s.g; b += s.b; n++;
+  }
+  if (!n) return null;
+  const mr = r / n, mg = g / n, mb = b / n;
+  return {
+    luma: 0.299 * mr + 0.587 * mg + 0.114 * mb,
+    rg: mg > 0 ? mr / mg : Infinity
+  };
+}
+
+export function lightTip(l) {
+  if (!l) return null;
+  if (l.luma < LIGHT.DIM_LUMA) return 'Your face is too dark for pulse. Face a lamp or a window, or turn screen brightness up.';
+  if (l.rg > LIGHT.WARM_RG) return 'Warm yellow light hides the pulse. A white light in front of you works better.';
+  return null;
+}
+
+export function hrView(last, now, holdS = 10) {
+  if (!last) return { v: null, state: 'none', age: null };
+  const age = now - last.t;
+  return age <= 2 ? { v: last.v, state: 'live', age } : age <= holdS ? { v: last.v, state: 'held', age } : { v: null, state: 'none', age };
+}
+
+export const hrvShown = (hrv, q) => Number.isFinite(hrv) && hrv >= 15 && hrv <= 150 && (q ?? 0) >= 0.45 ? hrv : null;

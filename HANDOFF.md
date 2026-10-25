@@ -1,10 +1,25 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.2 (4 Hz live display track, on top of v0.7.1)  
+**Project version:** v0.7.3 (pulse tile with light coach, beating heart, and late HR baseline)  
 **Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.3 update (2026-10-26): pulse tile with light coach, beating heart, and late HR baseline (feat/pulse-tile-light-coach)
+
+Changed
+1. `ui.js`: Added `lightOf(samples, now, spanMs)` to calculate mean facial skin luminance and red-to-green (R/G) ratio without storing image data, and `lightTip(light)` offering user guidance when face is dim (< 70) or lit with warm yellow LED (> 1.75) which attenuates green rPPG pulse signals.
+2. `ui.js`: Added `hrView(last, now, holdS = 10)` to keep HR stable during momentary tracking drops (holds last value greyed up to 10 s with `#hrAgo` readout) and `hrvShown(hrv, q)` gating displayed HRV to plausible physiological windows (15–150 ms at spectral SNR $q \ge 0.45$).
+3. `styles.css`: Added keyframed beating heart animation on `#hrHeart` synchronised with pulse period (`var(--beat)`), with reduced-motion fallback, and state styles for `data-state="live|held|none"`.
+4. `index.html`: Added `#hrAgo` and `#lightTip` inside `#pulseBox`.
+5. `app.js`: Connected `lightTip` to setup guidance and live pulse card; added late HR baseline acquisition in the `Baseline` phase if setup calibration missed the required 25 clean windows; logged `skin_luma`, `skin_rg`, and `hr_baseline_late` to session CSV exports.
+6. `DATA_SCHEMA.md`: Documented `skin_luma`, `skin_rg`, and `hr_baseline_late` export columns.
+7. `tests/ui.test.mjs`: Added unit tests for `lightOf`, `lightTip`, `hrView`, and `hrvShown`.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (30 tests pass).
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
+Note: Lighting thresholds (`DIM_LUMA = 70`, `WARM_RG = 1.75`) are initial empirical estimates and should be calibrated with further session recordings.
 
 ## v0.7.2 update (2026-10-26): 4 Hz fast live display track, zone hysteresis, and FPS readout (feat/fast-live-display)
 

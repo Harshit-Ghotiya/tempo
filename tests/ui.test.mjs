@@ -272,3 +272,41 @@ test('fast live display: zoneIdxOf hysteresis, makeBase, tensionOf and tweenNum 
   ui.tweenNum(el, -1.2, 1, 0, v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1));
   assert.equal(el.textContent, '−1.2');
 });
+
+test('pulse tile: light coach heuristics, plausibility gating and hrView hold states', () => {
+  const { lightOf, lightTip, hrView, hrvShown, LIGHT } = ui;
+
+  // lightOf windowing and RGB weighting
+  assert.equal(lightOf([], 1000), null);
+  const now = 5000;
+  const samples = [
+    { t: 2000, r: 100, g: 100, b: 100 }, // older than 2000ms span -> skipped
+    { t: 4000, r: 200, g: 100, b: 50 },
+    { t: 4500, r: 200, g: 100, b: 50 }
+  ];
+  const l = lightOf(samples, now);
+  assert.ok(l);
+  assert.ok(Math.abs(l.luma - (0.299 * 200 + 0.587 * 100 + 0.114 * 50)) < 1e-4);
+  assert.equal(l.rg, 2.0);
+
+  // lightTip guidance
+  assert.equal(lightTip(null), null);
+  assert.match(lightTip({ luma: 50, rg: 1.2 }), /too dark/);
+  assert.match(lightTip({ luma: 120, rg: 2.1 }), /Warm yellow light/);
+  assert.equal(lightTip({ luma: 120, rg: 1.4 }), null);
+
+  // hrView: live, held, none
+  assert.deepEqual(hrView(null, 10), { v: null, state: 'none', age: null });
+  assert.equal(hrView({ v: 72, t: 8.5 }, 10).state, 'live'); // age 1.5s <= 2s
+  const held = hrView({ v: 72, t: 4 }, 10);
+  assert.equal(held.state, 'held'); // age 6s <= 10s
+  assert.equal(held.v, 72);
+  assert.equal(held.age, 6);
+  assert.equal(hrView({ v: 72, t: 0 }, 15).state, 'none'); // age 15s > 10s
+
+  // hrvShown plausibility gate (15 - 150 ms, q >= 0.45)
+  assert.equal(hrvShown(45, 0.6), 45);
+  assert.equal(hrvShown(180, 0.6), null, 'rejects > 150 ms');
+  assert.equal(hrvShown(10, 0.6), null, 'rejects < 15 ms');
+  assert.equal(hrvShown(45, 0.3), null, 'rejects low quality q < 0.45');
+});

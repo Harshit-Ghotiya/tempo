@@ -47,3 +47,6 @@ The nearest later report wins if several qualify. No label is carried forward.
 
 ## v0.7 additions
 - `tension_fast`: display-only fast tension (4 s rolling window, separate fast-window baseline, tau = 1.2 s EMA smoothing, updated at 4 Hz). Not used for model training; `tension_idx` (10 s window, alpha = 0.3) stays the primary scientifically consistent metric.
+- `skin_luma`: mean face skin luminance (0.299R + 0.587G + 0.114B over 2 s buffer). Derived lighting indicator with no raw image data preserved.
+- `skin_rg`: mean red-to-green skin ratio (R/G). Values > 1.75 indicate warm/yellow lighting that attenuates green rPPG pulse signals.
+- `hr_baseline_late`: boolean flag indicating whether the HR/HRV baseline was acquired during the Baseline phase rather than the initial setup calibration due to lighting conditions. `z_hr` and `z_hrv` before acquisition are blank; subsequent windows are calibrated to this late baseline.

@@ -3,7 +3,7 @@ import {createTracker,isSkin} from './hr.js';
 import {initAffect,evalAffect} from './affect.js';
 import {createVoiceMonitor} from './voice.js';
 import {createTrend,ema} from './chart.js';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme} from './ui.js';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -262,12 +262,30 @@ function liveTick(){
  for(const [k] of [...ROWS.face,...ROWS.pose])setRow(k,x[k],z[k]);
 }
 
+let lastHr=null,calLate={hr:[],hrv:[]},hrLate=false;
+
 const stateOf=v=>v==null?'Not enough signal yet':v<-.75?'More relaxed than your baseline':v<=.75?'Near your baseline':v<=1.5?'Somewhat above your baseline':'Well above your baseline';
 function show(x,z,q,el,all,ag,tn,af,status){
  $('idxHead').classList.toggle('on',fast!==null||tn!==null);
  const pe=$('idxPulse');if(pe)pe.classList.toggle('on',fast!==null||tn!==null);
  $('pulseBox').hidden=!use.pulse;
- if(use.pulse){const hr=x.hr??null,hrv=x.hrv??null;tweenNum($('hrNum'),hr);tweenNum($('hrvNum'),hrv);$('hrNote').textContent=hr!==null?'experimental estimate':'no clear pulse signal'}
+ if(use.pulse){
+  if(x.hr!=null&&Number.isFinite(x.hr))lastHr={v:x.hr,t:el};
+  const view=hrView(lastHr,el);
+  const box=$('pulseBox');if(box)box.dataset.state=view.state;
+  tweenNum($('hrNum'),view.v);
+  const hrvV=hrvShown(x.hrv,q.rppg);
+  tweenNum($('hrvNum'),hrvV);
+  const agoEl=$('hrAgo');
+  if(agoEl)agoEl.textContent=view.state==='held'&&view.age!=null?`(${Math.round(view.age)}s ago)`:'';
+  const heart=$('hrHeart');
+  if(heart){
+   if(view.state==='live'&&view.v>0)heart.style.setProperty('--beat',(60/view.v).toFixed(2)+'s');
+   else heart.style.removeProperty('--beat');
+  }
+  const note=view.state==='live'?'experimental estimate':view.state==='held'?'signal lost: holding last value':'no clear pulse signal';
+  $('hrNote').textContent=note;
+ }
  setDot($('dFace'),use.face?q.face:null);setDot($('dPulse'),use.pulse?q.rppg:null);setDot($('dPose'),use.pose?q.pose:null);
  setDot($('dVoice'),use.voice?(voice&&performance.now()-voice.t<15e3?voice.q:0.1):null);
  $('win').textContent=status;$('win').dataset.ok=status==='clean window'?'1':'0';
@@ -288,30 +306,49 @@ function show(x,z,q,el,all,ag,tn,af,status){
  if(DEMO_GUNA||trained){for(const g of G)$('v_'+g).textContent=all?Math.round(100*all[g])+'%':'–';$('ag').textContent=ag==null?'–':ag.toFixed(2)}
 }
 
-function setup(el,x,q){ // setup stage: ring, wording and live checks while the baseline is being collected
+function setup(el,x,q,tip=null){ // setup stage: ring, wording and live checks while the baseline is being collected
  const settling=el<SETTLE_S,lv=v=>v==null?'':v>=.6?'good':v>=.3?'fair':'poor',
   row=(id,on,v,txt)=>{const r=$(id);r.hidden=!on;if(on){r.firstElementChild.dataset.q=lv(v);r.lastElementChild.textContent=txt}};
  ring(el/CAL_END);$('ringNum').textContent=mmss(Math.max(0,CAL_END-el));
  $('setupTitle').textContent=settling?'Settling in':'Calibrating';
- $('setupText').textContent=settling?'Sit comfortably and face the screen.':'Stay still and breathe normally. This becomes your personal baseline.';
+ $('setupText').textContent=settling?'Sit comfortably and face the screen.':'Stay still and breathe normally. This becomes your personal baseline. If the pulse doesn\'t lock during setup, stay in Baseline a little longer under better light.';
  const p=presence(),still=x.headMove==null?null:x.headMove<.35?1:x.headMove<.6?.45:0;
  row('cFace',true,p,p>=.9?'Face in frame':'Move into the frame and face the screen');
- row('cPulse',use.pulse,q.rppg,q.rppg>=MIN_Q?'Pulse signal found':'Looking for a pulse: light your face evenly and hold still');
+ row('cPulse',use.pulse,q.rppg,tip??(q.rppg>=MIN_Q?'Pulse signal found':'Looking for a pulse: light your face evenly and hold still'));
  row('cPose',use.pose,q.pose,q.pose>=.6?'Shoulders in frame':'Sit back so your shoulders are in view');
  row('cStill',use.face&&still!==null,still,still===1?'Holding still':'Try to hold still');
 }
 
 function tick(){
  const el=(performance.now()-start)/1e3,{x,q}=feats(),pre=el<CAL_END,phase=el<SETTLE_S?'settle':pre?'calibration':phaseNow();
- let z={},ps={},all=null,ag=null,tn=null,af=null;
+ let z={},ps={},all=null,ag=null,tn=null,af=null,light=null,tip=null;
+ if(use.pulse){
+  light=lightOf(rgb,performance.now());
+  tip=lightTip(light);
+  const tipEl=$('lightTip');
+  if(tipEl){if(tip){tipEl.textContent=tip;tipEl.hidden=false}else tipEl.hidden=true}
+ }
  if(pre){
   // Baseline only from settled, good-quality windows: the first seconds of a session are mostly movement.
   if(el>=SETTLE_S+WIN_S)for(const k in x)if(FEAT[k]&&(q[FEAT[k]]??0)>MIN_Q)(cal[k]??=[]).push(x[k]);
-  setup(el,x,q);
+  setup(el,x,q,tip);
  }else{
   if(document.body.dataset.stage==='setup'){stage('live');toast('Baseline set. You are live.');trend.mark(el,'baseline')}
   // Robust baseline: median and MAD, floored at 10% of the median because overlapping windows understate spread.
   base??=makeBase(cal);
+  // Late HR baseline if calibration missed it but user is in baseline phase under better light
+  const ws0=Math.max(0,el-WIN_S),fs0_c=el-LOOKBACK_S,cleanWin=!pre&&fs0_c>=phaseStart&&fs0_c>hiddenAt;
+  if(use.pulse&&base&&!base.hr&&!hrLate&&phase==='baseline'&&cleanWin){
+   if(x.hr!=null&&(q.rppg??0)>MIN_Q){
+    (calLate.hr??=[]).push(x.hr);
+    if(x.hrv!=null)(calLate.hrv??=[]).push(x.hrv);
+    if(calLate.hr.length>=MIN_CAL_N){
+     Object.assign(base,makeBase(calLate));
+     hrLate=true;
+     toast('Pulse baseline set from Baseline phase.');
+    }
+   }
+  }
   const miss=Object.keys(FEAT).filter(k=>({face:use.face,rppg:use.pulse,pose:use.pose})[FEAT[k]]&&!base[k]);
   $('st').textContent=miss.length?`No baseline for ${miss.join(', ')}. Check lighting and framing, then start a new session.`:'';
   for(const k in x)if(base[k])z[k]=Math.max(-3,Math.min(3,(x[k]-base[k].m)/base[k].s));
@@ -335,6 +372,7 @@ function tick(){
   participant_id:participantId,session_id:sessionId,t:+el.toFixed(1),
   window_start_s:+ws.toFixed(1),window_end_s:+el.toFixed(1),feature_start_s:+Math.max(0,fs0).toFixed(1),phase,phase_start_s:+phaseStart.toFixed(1),
   transition:!pre&&!inside,tension_idx:tn??'',tension_fast:fast==null?'':+fast.toFixed(3),valence:af?+af.valence.toFixed(3):'',arousal:af?+af.arousal.toFixed(3):'',
+  skin_luma:light?+light.luma.toFixed(1):'',skin_rg:light?+light.rg.toFixed(2):'',hr_baseline_late:hrLate,
   ...x,...Object.fromEntries(Object.entries(z).map(([k,v])=>['z_'+k,v])),
   ...(all?{p_sattva:all.sattva,p_rajas:all.rajas,p_tamas:all.tamas}:{}),
   face_quality:q.face??'',rppg_quality:q.rppg??'',pose_quality:q.pose??'',agree:ag
@@ -383,6 +421,7 @@ $('go').onclick=async()=>{
  }
  fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;
  calFast={};baseFast=null;fast=null;lastLive=0;zoneIdx=null;afTrailPts=[];
+ lastHr=null;calLate={hr:[],hrv:[]};hrLate=false;
  if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q)):null;
  reports=[];idxSeries=[];tensionS=null;phaseStart=CAL_END;
  trend.reset();trend.start(()=>(performance.now()-start)/1e3);
