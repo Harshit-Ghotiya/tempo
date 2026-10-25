@@ -15,6 +15,8 @@ jobs:
       - run: node --check app.js
       - run: node --check ui.js
       - run: node --check hr.js
+      - run: node --check affect.js
+      - run: node --check voice.js
       - run: node --test tests/ui.test.mjs tests/hr.test.mjs
       - uses: actions/setup-python@v5
         with:

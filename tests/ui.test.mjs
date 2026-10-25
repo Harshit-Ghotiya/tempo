@@ -175,3 +175,17 @@ test('voice acoustic scorer (voice.js): silence abstention, high arousal rajas a
   const f = acousticFeatures(new Float32Array([0.1, -0.1, 0.1, -0.1]), new Float32Array([-100, -20, -80]), 48000);
   assert.ok(f.rms > 0.09 && f.zcr > 0.5 && f.centroid > 0);
 });
+
+test('launcher copies every module the page loads', () => {
+  const appSrc = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
+  const buildSh = readFileSync(new URL('../launcher/build.sh', import.meta.url), 'utf8');
+  const cpLine = buildSh.split('\n').find(l => l.startsWith('cp ') && l.includes('site/')) || '';
+
+  const appImports = [...appSrc.matchAll(/from\s+['"]\.\/([\w.-]+)['"]/g)].map(m => m[1]);
+  const htmlAssets = [...html.matchAll(/(?:src|href)=['"](?!\w+:\/\/)([\w.-]+\.(?:js|css))['"]/g)].map(m => m[1]);
+
+  const required = new Set(['index.html', 'app.js', 'preset_models.json', ...appImports, ...htmlAssets]);
+  for (const file of required) {
+    assert.ok(cpLine.includes(file), `launcher/build.sh cp line missing file: ${file}`);
+  }
+});

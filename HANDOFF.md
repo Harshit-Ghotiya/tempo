@@ -1,10 +1,20 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
 **Project version:** v0.6 (face-first stress detector, redesigned portal, packaged apps, on top of v0.5)  
-**Date:** 2026-10-25  
+**Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.6.5 update (2026-10-26): launcher copies all loaded modules and models (fix/launcher-copy-modules)
+
+Changed
+1. `launcher/build.sh` copies `affect.js`, `voice.js` and `preset_models.json` into `site/` alongside `index.html`, `app.js`, `hr.js`, `ui.js`, preventing the packaged standalone app from failing due to missing ES module imports or demo model assets.
+2. `.github/workflows/ci.yml` adds `node --check` validation for `affect.js` and `voice.js`.
+3. `tests/ui.test.mjs` adds automated verification asserting that `launcher/build.sh` copies every local script and model asset imported by `app.js` or referenced in `index.html`.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (25 tests pass).
+Not checked: full Go compilation via `launcher/build.sh`; running the resulting packaged binary on Mac, Linux, or Windows.
 
 ## v0.6.4 update (2026-10-25): opt-in on-device microphone voice scorer for window.setVoice (voice.js)
 
