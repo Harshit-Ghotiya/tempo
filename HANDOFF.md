@@ -6,6 +6,15 @@
 
 ---
 
+## v0.6.2 update (2026-10-25): skin-pixel gating and HRV (RMSSD) for webcam pulse
+
+Changed
+1. `isSkin` in `hr.js` and the forehead/cheek ROI loop in `app.js` reject non-skin pixels (hair, glasses frames, shadows and specular glare) using RGB and YCbCr chrominance bounds before averaging RGB, falling back to unsaturated pixels only when fewer than 20 skin pixels are found. The RGB rolling buffer in `app.js` is extended from 12 s to 16 s.
+2. `rmssd` in `hr.js` extracts parabolic-interpolated inter-beat intervals from the zero-phase fundamental-band pulse wave and estimates HRV (`hrv`, RMSSD in ms) whenever at least 4 valid consecutive beat intervals exist. `hrv` is shown alongside `hr` in `#pulseBox` (labelled experimental) and exported with its baseline z-score (`z_hrv`).
+
+Checked: `node --check` on `app.js`, `ui.js`, `hr.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (22 tests pass, including skin-mask and respiratory-modulation HRV tests).
+Not checked: pulse and HRV accuracy against a fingertip oximeter on real faces; packaged Mac or Windows app runs.
+
 ## v0.6.1 update (2026-10-25): load trained models.json and demo preset in the browser portal
 
 Changed

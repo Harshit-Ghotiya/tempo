@@ -4,7 +4,7 @@
 // and then fixed. This validates the algorithm's logic, not its accuracy on real faces.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTracker, resample, pos } from '../hr.js';
+import { createTracker, resample, pos, isSkin } from '../hr.js';
 
 function rng(seed) { let a = seed; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const gauss = r => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
@@ -109,3 +109,20 @@ test('follows a gradual rise', () => { const v = R.ramp60to90; assert.ok(v.valid
 test('re-acquires after a step change', () => { const v = R.step60to100; assert.ok(v.valid >= 0.9 && v.mae < 5, JSON.stringify(v)); });
 test('white noise: almost never reports a rate', () => { assert.ok(R.noiseOnly.valid < 0.15, JSON.stringify(R.noiseOnly)); });
 test('red noise: rarely reports a rate', () => { assert.ok(R.redNoiseOnly.valid < 0.25, JSON.stringify(R.redNoiseOnly)); });
+test('skin mask accepts skin tones and rejects hair, shadows and specular glare', () => {
+  assert.equal(isSkin(180, 125, 100), true);
+  assert.equal(isSkin(110, 75, 55), true);
+  assert.equal(isSkin(15, 15, 15), false);   // dark hair / shadow
+  assert.equal(isSkin(252, 252, 252), false); // specular glare
+  assert.equal(isSkin(80, 130, 180), false);  // blue background
+});
+test('HRV (RMSSD ms) is estimated on valid pulse windows and increases under respiratory modulation', () => {
+  const trackerSteady = createTracker(), trackerRsa = createTracker();
+  const steady = trace({ secs: 25, hr: () => 65, noise: 0.0005, seed: 21 });
+  const rsa = trace({ secs: 25, hr: s => 65 + 6 * Math.sin(2 * Math.PI * 0.22 * s), noise: 0.0005, seed: 22 });
+  const eSteady = trackerSteady.update(steady.filter(f => f.t > 9e3), 25e3);
+  const eRsa = trackerRsa.update(rsa.filter(f => f.t > 9e3), 25e3);
+  assert.ok(eSteady.valid && Number.isFinite(eSteady.hrv), JSON.stringify(eSteady));
+  assert.ok(eRsa.valid && Number.isFinite(eRsa.hrv), JSON.stringify(eRsa));
+  assert.ok(eRsa.hrv > eSteady.hrv, `expected RSA HRV (${eRsa.hrv}) > steady HRV (${eSteady.hrv})`);
+});

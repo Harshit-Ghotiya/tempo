@@ -9,6 +9,12 @@ const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
 const std = a => { const m = mean(a); return Math.sqrt(mean(Array.from(a, v => (v - m) ** 2))); };
 
 // Samples: [{t (ms, ascending), r, g, b}] -> uniform FS Hz channels.
+export function isSkin(r, g, b) {
+  if (r < 35 || r > 245 || g < 20 || b < 15 || r <= g || r <= b) return false;
+  const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b, cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+  return cb >= 75 && cb <= 138 && cr >= 128 && cr <= 182;
+}
+
 export function resample(s) {
   const t0 = s[0].t, n = Math.floor((s[s.length - 1].t - t0) / 1e3 * FS), R = [], G = [], B = [];
   let j = 0;
@@ -89,15 +95,38 @@ export function analyze(samples) {
     const h = c.f / 2;
     if (h >= F_LO && pw(h) >= 0.25 * c.p) cands.push({ f: h, bpm: 60 * h, p: pw(h), s: pw(h) + 0.5 * c.p, snr: snr(h), half: true });
   }
-  return { cands, P };
+  return { cands, P, x };
 }
 
-// One tracker per session. update() returns {hr, q, snr, valid}; hr is null unless a gated estimate exists.
+// Inter-beat interval RMSSD (ms) from zero-phase fundamental-band pulse wave and estimated BPM.
+export function rmssd(x, bpm) {
+  if (!x || x.length < MIN_SPAN_S * FS || !Number.isFinite(bpm)) return null;
+  const f0 = bpm / 60, y = filtfilt(filtfilt(x, biquad(true, Math.max(0.6, 0.72 * f0))), biquad(false, Math.min(3.5, 1.38 * f0)));
+  const minDist = 0.65 * FS / f0, pks = [];
+  for (let i = 1; i < y.length - 1; i++) {
+    if (y[i] > 0 && y[i] > y[i - 1] && y[i] >= y[i + 1]) {
+      const d = y[i - 1] - 2 * y[i] + y[i + 1], t = i + (d ? 0.5 * (y[i - 1] - y[i + 1]) / d : 0);
+      if (!pks.length || t - pks[pks.length - 1].t >= minDist) pks.push({ t, v: y[i] });
+      else if (y[i] > pks[pks.length - 1].v) pks[pks.length - 1] = { t, v: y[i] };
+    }
+  }
+  const ibi = [], t0 = 6e4 / bpm;
+  for (let i = 1; i < pks.length; i++) {
+    const dt = (pks[i].t - pks[i - 1].t) * 1e3 / FS;
+    if (dt >= 0.75 * t0 && dt <= 1.25 * t0) ibi.push(dt);
+  }
+  if (ibi.length < 4) return null;
+  const diffs = [];
+  for (let i = 1; i < ibi.length; i++) diffs.push(ibi[i] - ibi[i - 1]);
+  return Math.min(200, Math.max(5, Math.sqrt(mean(diffs.map(d => d * d)))));
+}
+
+// One tracker per session. update() returns {hr, hrv, q, snr, valid}; hr is null unless a gated estimate exists.
 export function createTracker() {
-  let hr = null, tHr = -1e9, alt = { bpm: 0, n: 0 };
-  const out = (v, q, snr = NaN) => ({ hr: v, q, snr, valid: v !== null });
+  let hr = null, hrv = null, tHr = -1e9, alt = { bpm: 0, n: 0 };
+  const out = (v, q, snr = NaN, hv = null) => ({ hr: v, hrv: hv, q, snr, valid: v !== null });
   return {
-    reset() { hr = null; tHr = -1e9; alt = { bpm: 0, n: 0 }; },
+    reset() { hr = null; hrv = null; tHr = -1e9; alt = { bpm: 0, n: 0 }; },
     update(samples, now) {
       const A = samples.length > 1 ? analyze(samples) : null;
       if (!A) return out(null, 0);
@@ -117,8 +146,10 @@ export function createTracker() {
       }
       if (!pick) return out(null, best.q);
       hr = hr === null ? pick.bpm : hr + 0.4 * (pick.bpm - hr);
+      const rawHrv = rmssd(A.x, hr);
+      if (rawHrv !== null) hrv = hrv === null ? rawHrv : hrv + 0.35 * (rawHrv - hrv);
       tHr = now;
-      return out(hr, pick.q, pick.snr);
+      return out(hr, pick.q, pick.snr, hrv);
     },
   };
 }

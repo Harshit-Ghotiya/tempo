@@ -1,5 +1,5 @@
 // Tempo v0.6: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
-import {createTracker} from './hr.js';
+import {createTracker,isSkin} from './hr.js';
 import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
@@ -12,10 +12,10 @@ const W_MOD={voice:.35,rppg:.30,face:.20,pose:.15}; // prior fusion weights: fit
 // perclos is still exported raw but not modelled: it is about 0 for an alert, seated person.
 // Face features are action-unit composites of MediaPipe's blendshape scores (0 to 1), averaged over the 10 s window.
 const AU=[['browLower','bL'],['browRaise','bR'],['lidTight','lt'],['eyeWide','ew'],['lipTight','lp'],['lipDown','ld'],['smile','sm']];
-const FEAT=Object.fromEntries([...AU.map(([k])=>[k,'face']),...['expressivity','blink','gaze','headMove'].map(k=>[k,'face']),['hr','rppg'],['shrug','pose'],['sway','pose'],['fidget','pose']]);
+const FEAT=Object.fromEntries([...AU.map(([k])=>[k,'face']),...['expressivity','blink','gaze','headMove'].map(k=>[k,'face']),['hr','rppg'],['hrv','rppg'],['shrug','pose'],['sway','pose'],['fidget','pose']]);
 // Smallest spread a baseline may have. Without it, blendshape scores near zero make ordinary movement look extreme
 // (the old lip feature sat at the +-3 clip in 48% of windows in the first real session).
-const FLOOR={browLower:.03,browRaise:.03,lidTight:.03,eyeWide:.03,lipTight:.03,lipDown:.03,smile:.04,expressivity:.01,blink:2,gaze:.03,headMove:.1,hr:3,shrug:.02,sway:.05,fidget:.1};
+const FLOOR={browLower:.03,browRaise:.03,lidTight:.03,eyeWide:.03,lipTight:.03,lipDown:.03,smile:.04,expressivity:.01,blink:2,gaze:.03,headMove:.1,hr:3,hrv:5,shrug:.02,sway:.05,fidget:.1};
 // Facial tension index: weights on baseline z-scores, positive = more tension. Literature-based priors, not fitted or validated.
 const TENSION={browLower:1,lidTight:.8,lipTight:.8,lipDown:.5,browRaise:.3,eyeWide:.2,smile:-.6,expressivity:.2,blink:.3,gaze:.4,headMove:.4};
 // Guna <- cue weights on baseline z-scores. This is the hypothesis from the mapping table; test and refit it.
@@ -88,17 +88,22 @@ function frame(v,t){
     o.gy=open?((p.y-L[159].y)/(L[145].y-L[159].y)+(q.y-L[386].y)/(L[374].y-L[386].y))/2:NaN;
     const iod=Math.hypot(L[33].x-L[263].x,L[33].y-L[263].y);o.nx=L[1].x/iod;o.ny=L[1].y/iod;
    }
-   if(use.pulse){ // mean RGB over forehead + both cheeks
+   if(use.pulse){ // mean skin RGB over forehead + both cheeks (hair, glasses and glare rejected)
     const W=v.videoWidth,H=v.videoHeight;if(cv.width!==W){cv.width=W;cv.height=H}
     cx.drawImage(v,0,0);
-    const fw=Math.abs(L[454].x-L[234].x)*W,s=[0,0,0];let n=0;
-    for(const [c,hx,hy] of [[L[151],.18*fw,.06*fw],[L[50],.07*fw,.07*fw],[L[280],.07*fw,.07*fw]]){
+    const fw=Math.abs(L[454].x-L[234].x)*W,s=[0,0,0],fb=[0,0,0];let n=0,nf=0;
+    for(const [c,hx,hy] of [[L[151],.14*fw,.05*fw],[L[50],.07*fw,.07*fw],[L[280],.07*fw,.07*fw]]){
      const x=Math.max(0,Math.round(c.x*W-hx)),y=Math.max(0,Math.round(c.y*H-hy)),w=Math.min(W-x,Math.round(2*hx)),h=Math.min(H-y,Math.round(2*hy));
      if(w<2||h<2)continue;
      const d=cx.getImageData(x,y,w,h).data;
-     for(let i=0;i<d.length;i+=4){s[0]+=d[i];s[1]+=d[i+1];s[2]+=d[i+2];n++}
+     for(let i=0;i<d.length;i+=4){
+      const r=d[i],g=d[i+1],b=d[i+2];
+      if(isSkin(r,g,b)){s[0]+=r;s[1]+=g;s[2]+=b;n++}
+      if(g>25&&g<245){fb[0]+=r;fb[1]+=g;fb[2]+=b;nf++}
+     }
     }
-    if(n)rgb.push({t,r:s[0]/n,g:s[1]/n,b:s[2]/n});
+    if(n>=20)rgb.push({t,r:s[0]/n,g:s[1]/n,b:s[2]/n});
+    else if(nf)rgb.push({t,r:fb[0]/nf,g:fb[1]/nf,b:fb[2]/nf});
    }
   }
   fbuf.push(o);
@@ -120,7 +125,7 @@ function frame(v,t){
  }
  while(fbuf.length&&fbuf[0].t<t-3e4)fbuf.shift();
  while(pbuf.length&&pbuf[0].t<t-3e4)pbuf.shift();
- while(rgb.length&&rgb[0].t<t-12e3)rgb.shift();
+ while(rgb.length&&rgb[0].t<t-16e3)rgb.shift();
 }
 
 function feats(){
@@ -142,7 +147,7 @@ function feats(){
   x.sway=Math.hypot(sd(Po.map(o=>o.sx)),sd(Po.map(o=>o.sy)));
   const w=fin(Po.map(o=>o.wv));if(w.length)x.fidget=mean(w);
  }
- if(use.pulse){const e=tracker.update(rgb,now);q.rppg=e.q;if(e.valid)x.hr=e.hr} // hr only for validated windows (see hr.js)
+ if(use.pulse){const e=tracker.update(rgb,now);q.rppg=e.q;if(e.valid){x.hr=e.hr;if(Number.isFinite(e.hrv))x.hrv=e.hrv}} // hr/hrv only for validated windows (see hr.js)
  for(const k in x)if(!Number.isFinite(x[k]))delete x[k];
  return {x,q};
 }
@@ -195,7 +200,7 @@ function show(x,z,q,el,all,ag,tn,status){
  $('idxHead').classList.toggle('on',tn!==null);
  drawSpark($('idxPath'),$('idxHead'),idxSeries,el,{fixed:[-3,3]});
  $('pulseBox').hidden=!use.pulse;
- if(use.pulse){const hr=x.hr??null;tweenNum($('hrNum'),hr);$('hrNote').textContent=hr!==null?'experimental estimate':'no clear pulse signal'}
+ if(use.pulse){const hr=x.hr??null,hrv=x.hrv??null;tweenNum($('hrNum'),hr);tweenNum($('hrvNum'),hrv);$('hrNote').textContent=hr!==null?'experimental estimate':'no clear pulse signal'}
  for(const [k] of [...ROWS.face,...ROWS.pose])setRow(k,x[k],z[k]);
  setDot($('dFace'),use.face?q.face:null);setDot($('dPulse'),use.pulse?q.rppg:null);setDot($('dPose'),use.pose?q.pose:null);
  $('win').textContent=status;$('win').dataset.ok=status==='clean window'?'1':'0';
