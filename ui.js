@@ -12,16 +12,17 @@ export function toast(msg, ms = 3400) {
 }
 
 // Number that eases to its new value (instead of jumping); null shows a dash.
-export function tweenNum(el, to, dec = 0, ms = 600) {
+export function tweenNum(el, to, dec = 0, ms = 600, fmt = null) {
   if (to == null || !Number.isFinite(to)) { el.textContent = '–'; el._v = null; return; }
   const from = Number.isFinite(el._v) ? el._v : to;
   let t0 = null; // first animation-frame timestamp, so one clock is used throughout
   el._v = to; cancelAnimationFrame(el._r);
-  if (calm() || from === to || typeof requestAnimationFrame !== 'function') { el.textContent = to.toFixed(dec); return; }
+  const format = typeof fmt === 'function' ? fmt : v => v.toFixed(dec);
+  if (calm() || from === to || ms <= 0 || typeof requestAnimationFrame !== 'function') { el.textContent = format(to); return; }
   const step = now => {
     t0 ??= now;
     const k = Math.min(1, (now - t0) / ms), e = 1 - (1 - k) ** 3;
-    el.textContent = (from + (to - from) * e).toFixed(dec);
+    el.textContent = format(from + (to - from) * e);
     if (k < 1) el._r = requestAnimationFrame(step);
   };
   el._r = requestAnimationFrame(step);

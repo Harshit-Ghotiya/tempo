@@ -1,10 +1,23 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.1 (smooth SVG trend chart with zones, on top of v0.7.0)  
+**Project version:** v0.7.2 (4 Hz live display track, on top of v0.7.1)  
 **Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.2 update (2026-10-26): 4 Hz fast live display track, zone hysteresis, and FPS readout (feat/fast-live-display)
+
+Changed
+1. `app.js`: Added a separate display-only fast track (`FAST_WIN_S = 4`, `LIVE_MS = 250`, `TAU_S = 1.2` s EMA) with its own baseline (`calFast` / `baseFast`) updating at 4 Hz (`liveTick()`). A sustained facial tension change now surfaces in ~1.5–3 s on screen instead of ~6–8 s, while leaving the scientifically consistent 10 s window and 1 Hz `tick()` logging completely intact.
+2. `app.js` & `styles.css`: Implemented `zoneIdxOf(v, prev, margin = 0.1)` with boundary hysteresis to prevent word flicker at 4 Hz, styling `#stateWord` and `#stateNum` via `data-zone` tokens (`relaxed`, `base`, `up`, `high`).
+3. `ui.js`: Extended `tweenNum` with an optional `fmt` formatter callback and immediate execution when `ms <= 0`.
+4. `index.html` & `app.js`: Added camera FPS readout (`#fpsNum`) computed from recent frame buffer counts, and an animated affect circumplex dot position with fading trail history (`#afTrail`).
+5. `DATA_SCHEMA.md`: Documented additive `tension_fast` export column.
+6. `tests/ui.test.mjs`: Added unit tests for `zoneIdxOf` hysteresis, `makeBase` calibration filtering, `tensionOf` prior weighting, and `tweenNum` number formatting.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (29 tests pass).
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.1 update (2026-10-26): smooth zone-colored trend chart and phase markers (feat/trend-chart)
 

@@ -44,3 +44,6 @@ The nearest later report wins if several qualify. No label is carried forward.
 - Baselines use per-feature minimum spreads (FLOOR in app.js), so near-zero blendshape scores no longer make ordinary movement look extreme.
 - `tension_idx`: prior-weighted facial tension index (positive = more tension relative to the person's own baseline). Weights are literature-based priors, not fitted. Blank when the face signal is unusable.
 - The oximeter columns planned for v0.5 (`ref_hr`, `ref_hr_age_s`) are not exported: that work is deferred.
+
+## v0.7 additions
+- `tension_fast`: display-only fast tension (4 s rolling window, separate fast-window baseline, tau = 1.2 s EMA smoothing, updated at 4 Hz). Not used for model training; `tension_idx` (10 s window, alpha = 0.3) stays the primary scientifically consistent metric.

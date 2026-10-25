@@ -237,3 +237,38 @@ test('createTrend SVG renderer: builds curves and places head', async () => {
   const cx = Number($('idxHead').getAttribute('cx'));
   assert.ok(Number.isFinite(cx) && cx > 0);
 });
+
+test('fast live display: zoneIdxOf hysteresis, makeBase, tensionOf and tweenNum formatting', async () => {
+  const { zoneIdxOf, makeBase, tensionOf } = await import('../app.js');
+
+  // zoneIdxOf hysteresis
+  assert.equal(zoneIdxOf(0.8, 1), 1, 'within 0.1 margin of 0.75, stays at base (1)');
+  assert.equal(zoneIdxOf(0.9, 1), 2, 'crosses margin, moves to up (2)');
+  assert.equal(zoneIdxOf(0.7, 2), 2, 'within 0.1 margin, stays at up (2)');
+  assert.equal(zoneIdxOf(0.6, 2), 1, 'crosses margin, moves down to base (1)');
+  assert.equal(zoneIdxOf(2.0, 0), 3, 'jump > 1 moves directly to high (3)');
+  assert.equal(zoneIdxOf(null, 1), null);
+
+  // makeBase: drops features with < 25 calibration samples, computes median and floor
+  const base = makeBase({
+    browLower: Array(25).fill(0.2),
+    lipTight: [0.1, 0.2]
+  });
+  assert.ok(base.browLower);
+  assert.equal(base.browLower.m, 0.2);
+  assert.equal(base.browLower.s, 0.03); // FLOOR.browLower is 0.03
+  assert.equal(base.lipTight, undefined);
+
+  // tensionOf: requires qFace >= MIN_Q (0.3) and at least 4 features
+  assert.equal(tensionOf({ browLower: 1, lidTight: 1, lipTight: 1, lipDown: 1 }, 0.2), null);
+  assert.equal(tensionOf({ browLower: 1, lidTight: 1, lipTight: 1 }, 0.9), null);
+  const t = tensionOf({ browLower: 1, lidTight: 1, lipTight: 1, lipDown: 1 }, 0.9);
+  assert.ok(Math.abs(t - 1.0) < 1e-6);
+
+  // tweenNum formatting callback
+  const el = $('stateNum');
+  ui.tweenNum(el, 0.7, 1, 0, v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1));
+  assert.equal(el.textContent, '+0.7');
+  ui.tweenNum(el, -1.2, 1, 0, v => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1));
+  assert.equal(el.textContent, '−1.2');
+});
