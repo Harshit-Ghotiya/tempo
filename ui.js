@@ -1,5 +1,5 @@
 // ui.js: small DOM helpers for the Tempo portal. No camera or MediaPipe code, so Node + jsdom can test it.
-import { smoothPath, niceRange, segments, zoneOf } from './chart.js';
+import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.7.5';
 export const $ = id => document.getElementById(id);
 export const stage = n => { document.body.dataset.stage = n; };
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -102,11 +102,16 @@ export function initTheme(btn) {
   const apply = val => {
     const meta = document.querySelector('meta[name="color-scheme"]');
     if (meta) meta.content = val ?? 'light dark';
+    if (val) document.documentElement.dataset.theme = val;
+    else delete document.documentElement.dataset.theme;
     btn.dataset.scheme = val ?? (sysDark() ? 'dark' : 'light');
   };
+  let initStored = null;
+  try { initStored = localStorage.getItem('color-scheme'); } catch (e) {}
+  apply(initStored);
   btn.addEventListener('click', () => {
-    let stored = null;
-    try { stored = localStorage.getItem('color-scheme'); } catch (e) {}
+    let stored = document.documentElement.dataset.theme || null;
+    try { stored = localStorage.getItem('color-scheme') ?? stored; } catch (e) {}
     const nxt = nextScheme(stored, sysDark());
     try {
       if (nxt) localStorage.setItem('color-scheme', nxt);

@@ -1,10 +1,10 @@
 // Tempo v0.7.5: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
-import {createTracker,isSkin} from './hr.js';
-import {initAffect,evalAffect} from './affect.js';
-import {createVoiceMonitor} from './voice.js';
-import {createTrend,ema} from './chart.js';
-import {phaseStats,directionChecks} from './summary.js';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js';
+import {createTracker,isSkin} from './hr.js?v=0.7.5';
+import {initAffect,evalAffect} from './affect.js?v=0.7.5';
+import {createVoiceMonitor} from './voice.js?v=0.7.5';
+import {createTrend,ema} from './chart.js?v=0.7.5';
+import {phaseStats,directionChecks} from './summary.js?v=0.7.5';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.5';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -427,7 +427,10 @@ $('saveReport').onclick=()=>{
 };
 
 const chk=()=>{$('go').disabled=!($('ok').checked&&($('uFace').checked||$('uPulse').checked||$('uPose').checked||$('uVoice').checked))};
-['ok','uFace','uPulse','uPose','uVoice'].forEach(id=>$(id).onchange=chk);['participantId','sessionId'].forEach(id=>$(id).oninput=chk);
+['ok','uFace','uPulse','uPose','uVoice'].forEach(id=>{const el=$(id);el.onchange=chk;el.oninput=chk;el.onclick=chk});
+['participantId','sessionId'].forEach(id=>$(id).oninput=chk);
+if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener('pageshow',chk);
+chk();
 
 $('go').onclick=async()=>{
  use={face:$('uFace').checked,pulse:$('uPulse').checked,pose:$('uPose').checked,voice:$('uVoice').checked};

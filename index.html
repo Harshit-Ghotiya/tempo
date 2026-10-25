@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tempo: personal stress signals</title>
 <meta name="color-scheme" content="light dark">
-<script>try{document.querySelector('meta[name="color-scheme"]').content=localStorage.getItem('color-scheme')??'light dark'}catch(e){}</script>
+<script>try{const s=localStorage.getItem('color-scheme');document.querySelector('meta[name="color-scheme"]').content=s??'light dark';if(s)document.documentElement.dataset.theme=s}catch(e){}</script>
 <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=0.7.5">
 </head>
 <body data-stage="consent">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -65,28 +65,28 @@
    <label>Session ID<input type="text" id="sessionId" placeholder="S01" autocomplete="off"></label>
   </div>
   <label class="sw">
-   <div class="sw-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
-   <div class="sw-text"><b>Facial expression</b><span>Brow, eyes, mouth and gaze, compared with your baseline</span></div>
-   <input type="checkbox" id="uFace" switch role="switch">
+   <span class="sw-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></span>
+   <span class="sw-text"><b>Facial expression</b><span>Brow, eyes, mouth and gaze, compared with your baseline</span></span>
+   <input type="checkbox" id="uFace" checked switch role="switch">
   </label>
   <label class="sw">
-   <div class="sw-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="m9 20 3-6 3 6m-6-11 3 3 3-3"/></svg></div>
-   <div class="sw-text"><b>Posture and movement</b><span>Shoulders, sway, hand movement</span></div>
+   <span class="sw-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><path d="m9 20 3-6 3 6m-6-11 3 3 3-3"/></svg></span>
+   <span class="sw-text"><b>Posture and movement</b><span>Shoulders, sway, hand movement</span></span>
    <input type="checkbox" id="uPose" switch role="switch">
   </label>
   <label class="sw">
-   <div class="sw-icon"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
-   <div class="sw-text"><b>Pulse from skin colour</b><span>Experimental and less reliable than the face signals.</span></div>
+   <span class="sw-icon"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span>
+   <span class="sw-text"><b>Pulse from skin colour</b><span>Experimental and less reliable than the face signals.</span></span>
    <input type="checkbox" id="uPulse" switch role="switch">
   </label>
   <label class="sw">
-   <div class="sw-icon"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2m7 9v4m-4 0h8"/></svg></div>
-   <div class="sw-text"><b>Voice tone from microphone</b><span>Experimental acoustic arousal and visual–voice agreement while speaking.</span></div>
+   <span class="sw-icon"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2m7 9v4m-4 0h8"/></svg></span>
+   <span class="sw-text"><b>Voice tone from microphone</b><span>Experimental acoustic arousal and visual–voice agreement while speaking.</span></span>
    <input type="checkbox" id="uVoice" switch role="switch">
   </label>
   <label class="sw">
-   <div class="sw-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
-   <div class="sw-text"><b>I agree</b><span>Video and audio are processed on this device only and are never recorded, stored or uploaded. Numbers are saved only when you press Export. You can stop at any time. Experimental, not a diagnostic tool.</span></div>
+   <span class="sw-icon"><svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+   <span class="sw-text"><b>I agree</b><span>Video and audio are processed on this device only and are never recorded, stored or uploaded. Numbers are saved only when you press Export. You can stop at any time. Experimental, not a diagnostic tool.</span></span>
    <input type="checkbox" id="ok" switch role="switch">
   </label>
   <div class="act">
@@ -339,6 +339,6 @@
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=0.7.5"></script>
 </body>
 </html>
