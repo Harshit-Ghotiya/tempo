@@ -1,10 +1,19 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
 **Project version:** v0.6 (face-first stress detector, redesigned portal, packaged apps, on top of v0.5)  
-**Date:** 2026-10-02  
+**Date:** 2026-10-25  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.6.1 update (2026-10-25): load trained models.json and demo preset in the browser portal
+
+Changed
+1. `loadModel` in `app.js` fetches `./models.json`, `./artifacts/models.json` or `./preset_models.json` at startup and before each session starts. When a valid model file is found, the portal unhides the researcher Guṇa readout (`#guna`) and exports `p_sattva`, `p_rajas`, `p_tamas` and `agree`. `preset_models.json` provides an out-of-the-box demo prior (explicitly marked as unvalidated in its metadata) that is overridden whenever `train_guna.py` writes `artifacts/models.json`.
+2. `modP` and `fuse` in `app.js` evaluate the per-modality median imputer, standard scaler and multinomial logistic weights (`W`), and combine available modalities with the trained log-linear opinion pool (`fusion.weights` and `fusion.temperature`), matching `predict_modality` and `fuse_predictions` in `train_guna.py`. Modalities absent from the loaded model file abstain instead of mixing heuristic priors with learned weights. The facial tension index weights (`TENSION`) remain unvalidated literature-based priors.
+
+Checked: `npm ci`; `node --check` on `app.js`, `ui.js`, `hr.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (20 tests pass); `train_guna.py` on synthetic data and `app.js` inference against both `artifacts/models.json` and `preset_models.json`.
+Not checked: real browser camera session with a real face; real stress data; packaged Mac or Windows app runs.
 
 ## v0.6 update (2026-10-11): face-first stress detector, redesigned portal, packaged apps
 

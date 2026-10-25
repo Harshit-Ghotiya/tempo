@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "trainer_version": "0.4",
+    "C": 0.3,
+    "n_participants": 0,
+    "n_windows": 0,
+    "target": "self-reported state (compositional)",
+    "warning": "Pre-configured demo prior; not fitted or validated on study participants."
+  },
+  "models": {
+    "face": {
+      "features": [
+        "z_browLower",
+        "z_browRaise",
+        "z_lidTight",
+        "z_eyeWide",
+        "z_lipTight",
+        "z_lipDown",
+        "z_smile",
+        "z_expressivity",
+        "z_blink",
+        "z_gaze",
+        "z_headMove"
+      ],
+      "imputer_median": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "mean": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "scale": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+      "W": [
+        [0.0, -0.35, -0.1, -0.28, -0.1, -0.28, -0.2, 0.35, -0.1, -0.18, -0.25, -0.22],
+        [0.0, 0.42, 0.2, 0.32, 0.22, 0.3, 0.15, -0.2, 0.25, 0.22, 0.38, 0.34],
+        [0.0, -0.07, -0.1, -0.04, -0.12, -0.02, 0.05, -0.15, -0.15, -0.04, -0.13, -0.12]
+      ],
+      "classes": ["sattva", "rajas", "tamas"]
+    },
+    "rppg": {
+      "features": ["z_hr"],
+      "imputer_median": [0],
+      "mean": [0],
+      "scale": [1],
+      "W": [
+        [0.0, -0.45],
+        [0.0, 0.65],
+        [0.0, -0.2]
+      ],
+      "classes": ["sattva", "rajas", "tamas"]
+    },
+    "pose": {
+      "features": ["z_shrug", "z_sway", "z_fidget"],
+      "imputer_median": [0, 0, 0],
+      "mean": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "W": [
+        [0.0, -0.35, -0.28, -0.38],
+        [0.0, 0.45, 0.35, 0.58],
+        [0.0, -0.1, -0.07, -0.2]
+      ],
+      "classes": ["sattva", "rajas", "tamas"]
+    }
+  },
+  "fusion": {
+    "weights": {
+      "face": 0.55,
+      "rppg": 0.25,
+      "pose": 0.2
+    },
+    "temperature": 1.0
+  }
+}

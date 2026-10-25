@@ -27,10 +27,10 @@ const MAP={
 const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN,
  sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(v=>(v-m)**2)))},fin=a=>a.filter(Number.isFinite);
 const median=a=>{const s=[...a].sort((p,q)=>p-q),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
-let use,face,pose,tracker,stream,running=false,start,base,timer,lastT=-1,fc=0,pw=null,voice=null;
+let use,face,pose,tracker,stream,running=false,start,base,timer,lastT=-1,fc=0,pw=null,voice=null,trained=null;
 let fbuf=[],pbuf=[],rgb=[],cal={},log=[];
 let participantId='',sessionId='',reports=[],phaseStart=CAL_END,hiddenAt=-1;
-const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});
+const cv=document.createElement('canvas'),cx=cv.getContext?.('2d',{willReadFrequently:true});
 
 // Hook for the existing voice model: setVoice({sattva,rajas,tamas}, quality0to1)
 window.setVoice=(p,q=1)=>{voice={p,q,t:performance.now()}};
@@ -38,13 +38,26 @@ window.setVoice=(p,q=1)=>{voice={p,q,t:performance.now()}};
 document.addEventListener('visibilitychange',()=>{if(start)hiddenAt=(performance.now()-start)/1e3});
 $('guna').hidden=!DEMO_GUNA;
 // Tell the launcher this page is open; it quits a few minutes after the last page closes.
-const ping=()=>fetch('/__alive',{cache:'no-store'}).catch(()=>{});ping();setInterval(ping,5000);
+const ping=()=>fetch('/__alive',{cache:'no-store'}).catch(()=>{});ping();setInterval(ping,5000).unref?.();
+
+export async function loadModel(urls=['./models.json','./artifacts/models.json','./preset_models.json']){
+ for(const u of urls){
+  try{
+   const r=await fetch(u,{cache:'no-store'});if(!r.ok)continue;
+   const m=await r.json();
+   if(m?.models&&typeof m.models==='object'&&Object.keys(m.models).length){trained=m;$('guna').hidden=false;return m}
+  }catch(e){}
+ }
+ trained=null;$('guna').hidden=!DEMO_GUNA;return null;
+}
+loadModel();
 
 async function assets(){
  try{const r=await fetch('/vendor/mediapipe/vision_bundle.mjs',{method:'HEAD'});if(r.ok)return{vis:'/vendor/mediapipe',model:n=>'/models/'+n}}catch(e){}
  return{vis:CDN,model:n=>GCS+MODEL_PATH[n]};
 }
 async function init(){
+ await loadModel();
  const A=await assets(),{FilesetResolver,FaceLandmarker,PoseLandmarker}=await import(A.vis+'/vision_bundle.mjs');
  const fs=await FilesetResolver.forVisionTasks(A.vis+'/wasm');
  const mk=async(C,url,o)=>{let err;for(const delegate of['GPU','CPU']){try{return await C.createFromOptions(fs,{baseOptions:{modelAssetPath:url,delegate},runningMode:'VIDEO',...o})}catch(e){err=e}}throw err};
@@ -134,14 +147,32 @@ function feats(){
  return {x,q};
 }
 
-function modP(m,z){ // per-modality Guna probabilities from z-scores
+export function modP(m,z,x={},mod=trained?.models?.[m]){ // per-modality Guna probabilities (trained model if loaded, else prior MAP)
+ if(mod?.features?.length&&mod?.W?.length){
+  const vs=mod.features.map(f=>f.startsWith('z_')?(z[f.slice(2)]??z[f]):(x[f]??z[f]));
+  if(vs.every(v=>!Number.isFinite(v)))return null;
+  const a=vs.map((v,i)=>((Number.isFinite(v)?v:(mod.imputer_median?.[i]??0))-(mod.mean?.[i]??0))/(mod.scale?.[i]||1));
+  const lg=mod.W.map(r=>r.slice(1).reduce((s,w,i)=>s+w*a[i],r[0])),mx=Math.max(...lg),ex=lg.map(v=>Math.exp(v-mx)),Z=ex.reduce((s,v)=>s+v,0);
+  const cls=mod.classes||G;return Object.fromEntries(cls.map((g,i)=>[g,ex[i]/Z]));
+ }
+ if(trained)return null; // when a trained file is active, skip modalities it did not fit
  const ks=Object.keys(z).filter(k=>FEAT[k]===m);if(!ks.length)return null;
  const e={};let Z=0;
  for(const g of G){let a=0,w=0;for(const k of ks){const c=MAP[g][k];if(c){a+=c*z[k];w+=Math.abs(c)}}e[g]=Math.exp(1.5*(w?a/w:0));Z+=e[g]}
  return Object.fromEntries(G.map(g=>[g,e[g]/Z]));
 }
 
-function fuse(ps){ // quality-weighted linear opinion pool
+export function fuse(ps,fcfg=trained?.fusion){ // log-linear pool when trained fusion weights exist, else quality-weighted linear pool
+ if(fcfg?.weights){
+  const fw=fcfg.weights,T=fcfg.temperature>0?fcfg.temperature:1,num={sattva:0,rajas:0,tamas:0};let den=0;
+  for(const m in ps){
+   const w=fw[m]??(m==='voice'?W_MOD.voice*ps[m].q:0);
+   if(w>0){den+=w;for(const g of G)num[g]+=w*Math.log(Math.max(1e-8,Math.min(1,ps[m].p[g])))}
+  }
+  if(!den)return null;
+  const lg=G.map(g=>num[g]/den/T),mx=Math.max(...lg),ex=lg.map(v=>Math.exp(v-mx)),Z=ex.reduce((s,v)=>s+v,0);
+  return Object.fromEntries(G.map((g,i)=>[g,ex[i]/Z]));
+ }
  let Z=0;const o={sattva:0,rajas:0,tamas:0};
  for(const m in ps){const w=W_MOD[m]*ps[m].q;Z+=w;for(const g of G)o[g]+=w*ps[m].p[g]}
  return Z?Object.fromEntries(G.map(g=>[g,o[g]/Z])):null;
@@ -169,7 +200,7 @@ function show(x,z,q,el,all,ag,tn,status){
  setDot($('dFace'),use.face?q.face:null);setDot($('dPulse'),use.pulse?q.rppg:null);setDot($('dPose'),use.pose?q.pose:null);
  $('win').textContent=status;$('win').dataset.ok=status==='clean window'?'1':'0';
  $('tb').innerHTML=Object.keys(FEAT).map(k=>`<tr><td>${k}</td><td>${x[k]==null?'–':x[k].toFixed(2)}</td><td>${z[k]==null?'–':z[k].toFixed(1)}</td></tr>`).join('');
- if(DEMO_GUNA){for(const g of G)$('v_'+g).textContent=all?Math.round(100*all[g])+'%':'–';$('ag').textContent=ag==null?'–':ag.toFixed(2)}
+ if(DEMO_GUNA||trained){for(const g of G)$('v_'+g).textContent=all?Math.round(100*all[g])+'%':'–';$('ag').textContent=ag==null?'–':ag.toFixed(2)}
 }
 
 function setup(el,x,q){ // setup stage: ring, wording and live checks while the baseline is being collected
@@ -202,8 +233,8 @@ function tick(){
   // Facial tension index: needs a usable face signal and at least 4 features with a baseline; smoothed so it does not flicker.
   const zs=Object.keys(TENSION).filter(k=>z[k]!=null),raw=q.face>=MIN_Q&&zs.length>=4?zs.reduce((s,k)=>s+TENSION[k]*z[k],0)/zs.reduce((s,k)=>s+Math.abs(TENSION[k]),0):null;
   tensionS=raw===null?null:tensionS===null?raw:tensionS+.3*(raw-tensionS);tn=tensionS;
-  if(DEMO_GUNA){
-   for(const m of['face','rppg','pose']){const p=modP(m,z);if(p&&q[m]>MIN_Q)ps[m]={p,q:q[m]}}
+  if(DEMO_GUNA||trained){
+   for(const m of['face','rppg','pose']){const p=modP(m,z,x);if(p&&q[m]>MIN_Q)ps[m]={p,q:q[m]}}
    const vis=fuse(ps),vo=voice&&performance.now()-voice.t<15e3?voice:null;
    all=fuse(vo?{...ps,voice:{p:vo.p,q:vo.q}}:ps);
    if(vo&&vis)ag=1-.5*G.reduce((s,g)=>s+Math.abs(vo.p[g]-vis[g]),0);

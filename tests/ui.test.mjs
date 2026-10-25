@@ -96,3 +96,58 @@ test('drawer, stage and toast', () => {
   ui.stage('live'); assert.equal(document.body.dataset.stage, 'live');
   ui.toast('Saved'); assert.equal($('toast').textContent, 'Saved'); assert.ok($('toast').classList.contains('on'));
 });
+
+test('models.json loader: trained modality inference, log-linear fusion and fallback', async () => {
+  const app = await import('../app.js');
+  const fixture = {
+    meta: { trainer_version: '0.4' },
+    models: {
+      face: {
+        features: ['z_browLower', 'z_smile'],
+        imputer_median: [0, 0.5],
+        mean: [0, 0.5],
+        scale: [1, 0.5],
+        W: [[0, -1, 1], [0, 1, -1], [0, 0, 0]],
+        classes: ['sattva', 'rajas', 'tamas']
+      }
+    },
+    fusion: { weights: { face: 0.7, pose: 0.3 }, temperature: 0.5 }
+  };
+  const origFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async u => u === './models.json' ? { ok: true, json: async () => fixture } : { ok: false };
+    const loaded = await app.loadModel(['./models.json']);
+    assert.ok(loaded);
+    assert.equal($('guna').hidden, false);
+
+    // z_browLower = 1 -> a0 = 1; z_smile missing -> imputed 0.5 -> a1 = 0; logits = [-1, 1, 0]
+    const pFace = app.modP('face', { browLower: 1 });
+    const eN = Math.exp(-1), eP = Math.exp(1), Z = eN + eP + 1;
+    assert.ok(Math.abs(pFace.sattva - eN / Z) < 1e-9);
+    assert.ok(Math.abs(pFace.rajas - eP / Z) < 1e-9);
+    assert.ok(Math.abs(pFace.tamas - 1 / Z) < 1e-9);
+    assert.equal(app.modP('face', {}), null); // all features missing -> abstain
+    assert.equal(app.modP('pose', { sway: 1 }), null); // modality absent from trained models.json
+
+    // Log-linear pool with temperature 0.5 over present modalities
+    const fused = app.fuse({ face: { p: { sattva: 0.2, rajas: 0.6, tamas: 0.2 }, q: 0.9 } });
+    const lg = [0.2, 0.6, 0.2].map(v => Math.log(v) / 0.5), mx = Math.max(...lg), ex = lg.map(v => Math.exp(v - mx)), sZ = ex.reduce((a, b) => a + b, 0);
+    assert.ok(Math.abs(fused.rajas - ex[1] / sZ) < 1e-9);
+
+    // Bundled preset_models.json is valid and shifts toward rajas when tension cues are positive
+    const preset = JSON.parse(readFileSync(new URL('../preset_models.json', import.meta.url), 'utf8'));
+    globalThis.fetch = async u => u === './preset_models.json' ? { ok: true, json: async () => preset } : { ok: false };
+    assert.ok(await app.loadModel());
+    const pStress = app.modP('face', { browLower: 1.5, lidTight: 1.2, lipTight: 1.0, smile: -0.5 });
+    assert.ok(pStress.rajas > pStress.sattva && pStress.rajas > pStress.tamas, JSON.stringify(pStress));
+
+    // Fallback when models.json is absent
+    globalThis.fetch = async () => ({ ok: false });
+    assert.equal(await app.loadModel(['./models.json']), null);
+    assert.equal($('guna').hidden, true);
+    const prior = app.modP('face', { browLower: 0 });
+    assert.ok(Math.abs(prior.sattva - 1 / 3) < 1e-9);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

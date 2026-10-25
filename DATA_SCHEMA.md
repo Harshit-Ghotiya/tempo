@@ -37,7 +37,7 @@ The nearest later report wins if several qualify. No label is carried forward.
 - `hr` is exported only for validated windows (see hr.js); otherwise it is blank. `rppg_quality` is spectral SNR mapped to 0-1: clamp((SNR_dB + 6) / 12). Windows below 0.3 count as missing in the trainer.
 - `perclos` is exported raw but is no longer modelled (no `z_perclos`; removed from the trainer's feature list).
 - Baselines are the median and 1.4826 x MAD (floored at 10% of the median) of at least 25 good-quality calibration windows per feature. A feature with fewer has no `z_` column for that session, and the portal says so on screen.
-- `p_sattva`, `p_rajas`, `p_tamas` and `agree` are written only when DEMO_GUNA is true in app.js (default false).
+- `p_sattva`, `p_rajas`, `p_tamas` and `agree` are written only when a trained `models.json` is loaded or `DEMO_GUNA` is true in app.js (default false).
 
 ## v0.6 additions
 - Face features are action-unit composites of MediaPipe blendshape scores, averaged over the 10 s window: browLower (AU4), browRaise (AU1/2), lidTight (AU7), eyeWide (AU5), lipTight (AU23/24 plus lip rolls), lipDown (AU15), smile (AU12). `expressivity` is the mean standard deviation of those composites (how much the face moves). The old `brow` and `lip` columns are gone.
