@@ -6,6 +6,16 @@
 
 ---
 
+## v0.6.6 update (2026-10-26): accurate description and fast startup for facial affect (fix/affect-honest-label)
+
+Changed
+1. `affect.js` exports `USE_ONNX = false` and skips unnecessary external ONNX CDN/model downloads during `initAffect()`, preventing startup delay and keeping affect inference 100% offline via MediaPipe blendshape action-unit projection.
+2. `index.html` updates the researcher readout label to "Facial affect (FACS blendshape projection, unvalidated)", accurately reflecting that weights are hand-set priors on Action Units rather than fitted on AffectNet.
+3. `DATA_SCHEMA.md` updates the description of `valence` and `arousal` columns to "hand-set FACS projection of MediaPipe blendshapes in [-1, 1], not validated on study participants".
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (25 tests pass).
+Not checked: real browser session with camera; live speaker audio; packaged Mac/Windows app runs.
+
 ## v0.6.5 update (2026-10-26): launcher copies all loaded modules and models (fix/launcher-copy-modules)
 
 Changed

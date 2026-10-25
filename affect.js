@@ -1,7 +1,6 @@
-// affect.js: 100% in-browser pre-trained facial Valence & Arousal estimation.
-// Uses HSEmotion ONNX (enet_b0_8_va_mtl.onnx via onnxruntime-web) when present, with an instant
-// FACS action-unit circumplex model over MediaPipe's 52 pre-trained blendshapes when offline.
-// Outputs are pre-trained priors (AffectNet / FACS circumplex), not validated on study participants.
+// affect.js: on-device facial Valence & Arousal estimation.
+// FACS-based projection of MediaPipe blendshape scores. Weights are hand-set priors, not trained on AffectNet and not validated.
+export const USE_ONNX = false;
 const ORT_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.mjs';
 const MODEL_URLS = ['./models/enet_b0_8_va_mtl.onnx', 'https://github.com/av-savchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/onnx/enet_b0_8_va_mtl.onnx'];
 
@@ -16,6 +15,7 @@ const RAW_REF = { smile: 0.08, browLower: 0.08, lipDown: 0.06, lipTight: 0.07, l
 let ortSession = null, ortApi = null;
 
 export async function initAffect(urls = MODEL_URLS) {
+  if (!USE_ONNX) return false;
   if (ortSession) return true;
   try {
     ortApi = await import(ORT_CDN);

@@ -5,7 +5,7 @@ One row = one 10-second rolling window, exported once per second. Derived featur
 ## Browser export columns
 - Identity and timing: `participant_id`, `session_id`, `t`, `window_start_s`, `window_end_s`, `feature_start_s`, `phase` (settle | calibration | baseline | stressor | recovery), `phase_start_s`, `transition`
 - Features (face): `browLower`, `browRaise`, `lidTight`, `eyeWide`, `lipTight`, `lipDown`, `smile`, `expressivity`, `blink`, `gaze`, `headMove`. Optional: `shrug`, `sway`, `fidget` (posture), `hr`, `hrv` (experimental pulse and inter-beat RMSSD in ms), `perclos` (raw only). Each modelled feature has a `z_<feature>` column (clipped baseline z-score, present after setup)
-- Heuristic and pre-trained outputs: `valence`, `arousal` (pre-trained AffectNet / FACS circumplex priors in [-1, 1], not validated on study participants), `p_sattva`, `p_rajas`, `p_tamas` and `agree` (voice/visual agreement when a voice model supplies probabilities)
+- Heuristic and pre-trained outputs: `valence`, `arousal` (hand-set FACS projection of MediaPipe blendshapes in [-1, 1], not validated on study participants), `p_sattva`, `p_rajas`, `p_tamas` and `agree` (voice/visual agreement when a voice model supplies probabilities)
 - Quality: `face_quality`, `rppg_quality`, `pose_quality`
 - Labels, assigned at export: `eligible_for_training`, `max_label_lag_s`, `report_t_s`, `report_phase`, `label_window_start_s`, `label_window_end_s`, `label_lag_s`, `raw_sattva`, `raw_rajas`, `raw_tamas`, `sattva_label`, `rajas_label`, `tamas_label`, `raw_stress`, `stress_label`
 
