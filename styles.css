@@ -762,10 +762,10 @@ body[data-stage=live] .cam-badge-live { display: inline-flex; }
   transform-box: fill-box;
   transform-origin: center;
 }
-#idxHead.on ~ #idxPulse, #idxHead.on {
+#idxPulse.on, #idxHead.on {
   opacity: 1;
 }
-#idxHead.on ~ #idxPulse {
+#idxPulse.on {
   animation: pulse-ring 2.4s cubic-bezier(.215,.61,.355,1) infinite;
 }
 @keyframes pulse-ring {
@@ -1150,17 +1150,41 @@ dialog#summary {
   max-height: 90vh;
   overflow-y: auto;
   background: var(--card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 28px;
   box-shadow: 0 24px 72px rgba(0, 0, 0, 0.28);
   padding: 28px 32px 32px;
   color: var(--text);
   box-sizing: border-box;
+  opacity: 0;
+  transform: scale(0.95);
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.28s;
+  transition-timing-function: var(--ease);
+  transition-behavior: allow-discrete;
+}
+dialog#summary[open] {
+  opacity: 1;
+  transform: scale(1);
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.95);
+  }
 }
 dialog#summary::backdrop {
-  background: rgba(0, 0, 0, 0.45);
+  background-color: rgba(0, 0, 0, 0);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  transition-property: background-color, display, overlay;
+  transition-duration: 0.28s;
+  transition-timing-function: var(--ease);
+  transition-behavior: allow-discrete;
+}
+dialog#summary[open]::backdrop {
+  background-color: rgba(0, 0, 0, 0.45);
+  @starting-style {
+    background-color: rgba(0, 0, 0, 0);
+  }
 }
 .sumhead {
   display: flex;

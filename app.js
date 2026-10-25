@@ -1,4 +1,4 @@
-// Tempo v0.7.4: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
+// Tempo v0.7.5: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
 import {createTracker,isSkin} from './hr.js';
 import {initAffect,evalAffect} from './affect.js';
 import {createVoiceMonitor} from './voice.js';
@@ -35,7 +35,7 @@ const median=a=>{const s=[...a].sort((p,q)=>p-q),m=s.length>>1;return s.length%2
 let use,face,pose,tracker,stream,vmon=null,running=false,start,base,timer,lastT=-1,fc=0,pw=null,voice=null,trained=null;
 let fbuf=[],pbuf=[],rgb=[],cal={},log=[];
 let participantId='',sessionId='',reports=[],phaseStart=CAL_END,hiddenAt=-1;
-const cv=document.createElement('canvas'),cx=cv.getContext?.('2d',{willReadFrequently:true});
+const cv=document.createElement('canvas');let cx=null;
 
 // Hook for the existing voice model: setVoice({sattva,rajas,tamas}, quality0to1)
 window.setVoice=(p,q=1)=>{voice={p,q,t:performance.now()}};
@@ -78,9 +78,11 @@ function loop(){
  requestAnimationFrame(loop);
 }
 
+const MESH_PTS=[70,63,105,66,107,336,296,334,293,300,33,160,158,133,153,144,362,385,387,263,373,380,468,473,1,2,98,327,168,6,197,195,5,4,61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409,10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
 function frame(v,t){
  if(face){
   const o={t,ok:false},r=face.detectForVideo(v,t),L=r.faceLandmarks[0];
+  const mcv=$('meshCv'),mcx=mcv?.getContext?.('2d');
   if(L){
    o.ok=true;
    if(use.face){
@@ -96,6 +98,7 @@ function frame(v,t){
    }
    if(use.pulse){ // mean skin RGB over forehead + both cheeks (hair, glasses and glare rejected)
     const W=v.videoWidth,H=v.videoHeight;if(cv.width!==W){cv.width=W;cv.height=H}
+    cx??=cv.getContext('2d',{willReadFrequently:true});
     cx.drawImage(v,0,0);
     const fw=Math.abs(L[454].x-L[234].x)*W,s=[0,0,0],fb=[0,0,0];let n=0,nf=0;
     for(const [c,hx,hy] of [[L[151],.14*fw,.05*fw],[L[50],.07*fw,.07*fw],[L[280],.07*fw,.07*fw]]){
@@ -111,14 +114,12 @@ function frame(v,t){
     if(n>=20)rgb.push({t,r:s[0]/n,g:s[1]/n,b:s[2]/n});
     else if(nf)rgb.push({t,r:fb[0]/nf,g:fb[1]/nf,b:fb[2]/nf});
    }
-   const mcv=$('meshCv'),mcx=mcv?.getContext?.('2d');
    if(mcx&&$('uMesh')?.checked){
     const W=v.videoWidth,H=v.videoHeight;
     if(mcv.width!==W||mcv.height!==H){mcv.width=W;mcv.height=H}
     mcx.clearRect(0,0,W,H);
     mcx.fillStyle='rgba(255,255,255,0.75)';
-    const pts=[70,63,105,66,107,336,296,334,293,300,33,160,158,133,153,144,362,385,387,263,373,380,468,473,1,2,98,327,168,6,197,195,5,4,61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409,10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
-    for(const idx of pts){const pt=L[idx];if(pt){mcx.beginPath();mcx.arc(pt.x*W,pt.y*H,1.5,0,6.283);mcx.fill()}}
+    for(const idx of MESH_PTS){const pt=L[idx];if(pt){mcx.beginPath();mcx.arc(pt.x*W,pt.y*H,1.5,0,6.283);mcx.fill()}}
     if(use.pulse){
      mcx.strokeStyle='rgba(255,69,58,0.75)';mcx.lineWidth=1.5;
      const fw=Math.abs(L[454].x-L[234].x)*W;
@@ -127,7 +128,7 @@ function frame(v,t){
      }
     }
    }else if(mcx&&mcv.width){mcx.clearRect(0,0,mcv.width,mcv.height)}
-  }
+  }else if(mcx&&mcv.width){mcx.clearRect(0,0,mcv.width,mcv.height)}
   fbuf.push(o);
  }
  if(pose&&fc++%POSE_EVERY===0){
@@ -211,7 +212,7 @@ const ROWS={face:[['browLower','Brow lowering'],['browRaise','Brow raise'],['lid
 const phaseNow=()=>document.querySelector('input[name=phase]:checked').value;
 const mmss=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 const presence=()=>{const r=fbuf.slice(-30);return r.length?r.filter(o=>o.ok).length/r.length:0};
-let idxSeries=[],tensionS=null;
+let tensionS=null;
 const trend=createTrend($('trend'));
 buildRows('rowsFace',ROWS.face);buildRows('rowsPose',ROWS.pose);RATE.forEach(initRate);
 
@@ -281,7 +282,6 @@ function liveTick(){
 
 let lastHr=null,calLate={hr:[],hrv:[]},hrLate=false;
 
-const stateOf=v=>v==null?'Not enough signal yet':v<-.75?'More relaxed than your baseline':v<=.75?'Near your baseline':v<=1.5?'Somewhat above your baseline':'Well above your baseline';
 function show(x,z,q,el,all,ag,tn,af,status){
  $('idxHead').classList.toggle('on',fast!==null||tn!==null);
  const pe=$('idxPulse');if(pe)pe.classList.toggle('on',fast!==null||tn!==null);
@@ -320,7 +320,14 @@ function show(x,z,q,el,all,ag,tn,af,status){
    }).join('');
   }
  }
- if(DEMO_GUNA||trained){for(const g of G)$('v_'+g).textContent=all?Math.round(100*all[g])+'%':'–';$('ag').textContent=ag==null?'–':ag.toFixed(2)}
+ if(DEMO_GUNA||trained){
+  for(const g of G){
+   const pct=all?Math.round(100*all[g])+'%':'–';
+   $('v_'+g).textContent=pct;
+   const bar=$('b_'+g);if(bar)bar.style.width=all?pct:'0%';
+  }
+  $('ag').textContent=ag==null?'–':ag.toFixed(2);
+ }
 }
 
 function setup(el,x,q,tip=null){ // setup stage: ring, wording and live checks while the baseline is being collected
@@ -338,6 +345,7 @@ function setup(el,x,q,tip=null){ // setup stage: ring, wording and live checks w
 
 function tick(){
  const el=(performance.now()-start)/1e3,{x,q}=feats(),pre=el<CAL_END,phase=el<SETTLE_S?'settle':pre?'calibration':phaseNow();
+ const ws=Math.max(0,el-WIN_S),fs0=el-LOOKBACK_S,inside=!pre&&fs0>=phaseStart&&fs0>hiddenAt; // features look back up to LOOKBACK_S
  let z={},ps={},all=null,ag=null,tn=null,af=null,light=null,tip=null;
  if(use.pulse){
   light=lightOf(rgb,performance.now());
@@ -354,8 +362,7 @@ function tick(){
   // Robust baseline: median and MAD, floored at 10% of the median because overlapping windows understate spread.
   base??=makeBase(cal);
   // Late HR baseline if calibration missed it but user is in baseline phase under better light
-  const ws0=Math.max(0,el-WIN_S),fs0_c=el-LOOKBACK_S,cleanWin=!pre&&fs0_c>=phaseStart&&fs0_c>hiddenAt;
-  if(use.pulse&&base&&!base.hr&&!hrLate&&phase==='baseline'&&cleanWin){
+  if(use.pulse&&base&&!base.hr&&!hrLate&&phase==='baseline'&&inside){
    if(x.hr!=null&&(q.rppg??0)>MIN_Q){
     (calLate.hr??=[]).push(x.hr);
     if(x.hrv!=null)(calLate.hrv??=[]).push(x.hrv);
@@ -380,7 +387,6 @@ function tick(){
    if(vo&&vis)ag=1-.5*G.reduce((s,g)=>s+Math.abs(vo.p[g]-vis[g]),0);
   }
  }
- const ws=Math.max(0,el-WIN_S),fs0=el-LOOKBACK_S,inside=!pre&&fs0>=phaseStart&&fs0>hiddenAt; // features look back up to LOOKBACK_S
  if(!pre)$('phaseTime').textContent=mmss(Math.max(0,el-phaseStart));
  const f2s=fbuf.filter(o=>o.t>performance.now()-2000).length;
  const fpsEl=$('fpsNum');if(fpsEl)fpsEl.textContent=Math.round(f2s/2)||'–';
@@ -440,7 +446,12 @@ $('go').onclick=async()=>{
  calFast={};baseFast=null;fast=null;lastLive=0;zoneIdx=null;afTrailPts=[];
  lastHr=null;calLate={hr:[],hrv:[]};hrLate=false;
  if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q)):null;
- reports=[];idxSeries=[];tensionS=null;phaseStart=CAL_END;
+ reports=[];tensionS=null;phaseStart=CAL_END;
+ renderState(null);
+ const trail=$('afTrail');if(trail)trail.innerHTML='';
+ const dot=$('afDot');if(dot){dot.setAttribute('cx','50');dot.setAttribute('cy','50')}
+ const tipEl=$('lightTip');if(tipEl)tipEl.hidden=true;
+ const agoEl=$('hrAgo');if(agoEl)agoEl.textContent='';
  trend.reset();trend.start(()=>(performance.now()-start)/1e3);
  document.querySelector('input[name=phase][value=baseline]').checked=true;$('reportPhase').textContent='Baseline';
  $('who').textContent=`${participantId} (${sessionId})`;$('cam').classList.add('on');
@@ -450,7 +461,7 @@ $('go').onclick=async()=>{
 
 $('stop').onclick=()=>{
  running=false;clearInterval(timer);clearInterval(liveTimer);trend.stop();if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
- $('meshCv')?.getContext?.('2d')?.clearRect(0,0,640,480);
+ const mcv=$('meshCv');mcv?.getContext?.('2d')?.clearRect(0,0,mcv.width||640,mcv.height||480);
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
  if(reports.length>0)showSummary();
@@ -491,8 +502,8 @@ $('exp').onclick=()=>{
  const rows=labelled(),ks=[...new Set(rows.flatMap(Object.keys))],
   esc=v=>{if(v==null)return '';const s=String(v);return /[",\n]/.test(s)?'"'+s.replaceAll('"','""')+'"':s},
   csv=[ks.join(','),...rows.map(r=>ks.map(k=>esc(r[k])).join(','))].join('\n'),
-  a=document.createElement('a');
- a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
- a.download=`${participantId}_${sessionId}_session.csv`;a.click();
+  a=document.createElement('a'),url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+ a.href=url;a.download=`${participantId}_${sessionId}_session.csv`;a.click();
+ setTimeout(()=>URL.revokeObjectURL(url),1000);
  toast(`Exported ${rows.filter(r=>r.eligible_for_training).length} labelled windows from ${reports.length} check-in(s).`);
 };

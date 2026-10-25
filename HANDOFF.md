@@ -6,14 +6,18 @@
 
 ---
 
-## v0.7.5 update (2026-10-26): real-time face landmark mesh and pulse ROIs overlay (feat/face-points-overlay)
+## v0.7.5 update (2026-10-26): real-time face landmark mesh, pulse ROIs overlay, and cross-branch audit/refactor (feat/face-points-overlay)
 
 Changed
 1. `index.html`: Added `#meshCv` overlay canvas and `#uMesh` switch toggle ("Show tracking points") in the camera card.
-2. `styles.css`: Added `#meshCv` absolute positioning with matching `scaleX(-1)` mirror transform, `object-fit: cover`, and `.mesh-toggle` styling.
-3. `app.js`: In `frame()`, when `#uMesh` is checked and landmarks are detected, renders key MediaPipe facial landmark points (brows, eyes, irises, nose, lips, jaw contour) in semi-transparent white and the three rPPG pulse regions of interest (forehead and cheeks) in translucent red. Clears cleanly when unchecked or stopped. Total overhead is < 0.1 ms per frame with zero network or persistence overhead.
+2. `styles.css`: Added `#meshCv` absolute positioning with matching `scaleX(-1)` mirror transform, `object-fit: cover`, and `.mesh-toggle` styling; fixed `dialog#summary` border token (`var(--line)`), added `@starting-style` and `transition-behavior: allow-discrete` entry/exit top-layer transitions, and fixed `#idxPulse.on` pulse ring selector.
+3. `app.js`: Hoisted `MESH_PTS` to top-level constant; in `frame()`, renders facial landmark points and rPPG pulse ROIs when `#uMesh` is checked and clears `#meshCv` cleanly when unchecked, when the face leaves the frame, or when stopped; updated Triguna visual bar widths (`#b_sattva`, `#b_rajas`, `#b_tamas`) alongside percentage text; deduplicated window boundary checks in `tick()`; reset live UI state on session re-run; revoked temporary CSV Blob URLs on export; lazily initialized offscreen canvas context.
+4. `ui.js`: Fixed `<dialog>` light-dismiss fallback (`setupDialogDismiss`) to check `if (e.target !== d) return;` and `'closedBy' in d` so keyboard/child button activations at `(0, 0)` never falsely dismiss the dialog; guarded `setRow` tooltip formatting when `raw` is missing; added Triguna phase breakdown and partial-recovery explanatory note to `renderSummary`.
+5. `chart.js`: Synchronized `#trendStroke` gradient coordinates (`y1`, `y2`) and right-edge `#trendZones` labels with dynamic y-axis auto-ranging, and attached/disconnected `ResizeObserver` across `start()`/`stop()`/`reset()`.
+6. `voice.js`: Resumed suspended `AudioContext` instances in `createVoiceMonitor`.
+7. `tests/ui.test.mjs`: Added `b_sattva`, `b_rajas`, `b_tamas` to the DOM ID contract check, plus behavioral assertions for `setupDialogDismiss` child vs. backdrop clicks, `#trendZones`/`#trendStroke` updates, and partial-recovery summary notes.
 
-Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass).
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass); `python3 tools/make_synthetic.py signal data/sessions.csv && python3 train_guna.py`.
 Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.4 update (2026-10-26): session summary modal and PDF print layout (feat/session-summary)

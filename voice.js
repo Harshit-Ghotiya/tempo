@@ -41,7 +41,9 @@ export function scoreVoice({ rms = 0, centroid = 0, zcr = 0 } = {}) {
 export function createVoiceMonitor(stream, onVoice) {
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AC || !stream?.getAudioTracks?.().length) return { stop() {} };
-  const ctx = new AC(), src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
+  const ctx = new AC();
+  if (ctx.state === 'suspended') ctx.resume?.().catch?.(() => {});
+  const src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
   an.fftSize = 1024; an.smoothingTimeConstant = 0.5;
   src.connect(an);
   const tBuf = new Float32Array(an.fftSize), fBuf = new Float32Array(an.frequencyBinCount);

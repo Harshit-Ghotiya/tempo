@@ -89,6 +89,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
   let headV = 0;
   let lastFrame = 0;
   let rafId = null;
+  let ro = null;
   let running = false;
   let W = 600, H = 220;
 
@@ -132,6 +133,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
         cancelAnimationFrame(rafId);
         rafId = null;
       }
+      if (ro) { ro.disconnect(); ro = null; }
       running = false;
     },
 
@@ -139,6 +141,10 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
       running = true;
       lastFrame = performance.now();
       updateSize();
+      if (!ro && typeof ResizeObserver === 'function' && svg?.parentElement) {
+        ro = new ResizeObserver(() => updateSize());
+        ro.observe(svg.parentElement);
+      }
 
       const loop = ts => {
         if (!running) return;
@@ -162,6 +168,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
         cancelAnimationFrame(rafId);
         rafId = null;
       }
+      if (ro) { ro.disconnect(); ro = null; }
     },
 
     render(now, dt = 0.033) {
@@ -180,21 +187,44 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
       const toY = v => padTop + (range[1] - Math.max(range[0] - 1, Math.min(range[1] + 1, v))) / rSpan * plotH;
       const y0 = toY(0);
 
+      // Update gradient stops to match current data y-coordinates
+      const grad = $id('trendStroke');
+      if (grad) {
+        grad.setAttribute('y1', f(toY(1.8)));
+        grad.setAttribute('y2', f(toY(-1.0)));
+      }
+
       // Baseline band and zero dashed line
       const band = $id('idxBand');
       if (band) {
         const topY = toY(0.75), botY = toY(-0.75);
         band.setAttribute('x', '0');
         band.setAttribute('y', f(Math.min(topY, botY)));
-        band.setAttribute('width', f(W));
+        band.setAttribute('width', f(plotW));
         band.setAttribute('height', f(Math.abs(botY - topY)));
       }
       const zero = $id('trendZero');
       if (zero) {
         zero.setAttribute('x1', '0');
-        zero.setAttribute('x2', f(W));
+        zero.setAttribute('x2', f(plotW));
         zero.setAttribute('y1', f(y0));
         zero.setAttribute('y2', f(y0));
+      }
+
+      // Right-edge zone labels
+      const zonesG = $id('trendZones');
+      if (zonesG) {
+        let zHtml = '';
+        for (const z of ZONES) {
+          const zlo = Math.max(range[0], z.lo), zhi = Math.min(range[1], z.hi);
+          if (zhi > zlo) {
+            const yTop = toY(zhi), yBot = toY(zlo);
+            if (Math.abs(yBot - yTop) >= 14) {
+              zHtml += `<text x="${f(W - 6)}" y="${f((yTop + yBot) / 2 + 3.5)}" fill="var(--text-3)" font-size="10" font-weight="500" text-anchor="end">${z.label}</text>`;
+            }
+          }
+        }
+        zonesG.innerHTML = zHtml;
       }
 
       // Vertical time gridlines (at 60s, 120s, 180s ago)

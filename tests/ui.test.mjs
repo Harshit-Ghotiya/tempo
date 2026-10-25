@@ -12,7 +12,7 @@ const src = ['../app.js', '../ui.js'].map(f => readFileSync(new URL(f, import.me
 test('every id looked up by the scripts exists in the page', () => {
   const have = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
   const used = new Set([...src.matchAll(/\$\((['"])([A-Za-z][\w-]*)\1\)/g)].map(m => m[2]));
-  for (const id of ['v_sattva', 'v_rajas', 'v_tamas', 'ag']) used.add(id); // built dynamically in the demo layer
+  for (const id of ['v_sattva', 'v_rajas', 'v_tamas', 'b_sattva', 'b_rajas', 'b_tamas', 'ag']) used.add(id); // built dynamically in the demo layer
   const missing = [...used].filter(id => !have.has(id));
   assert.deepEqual(missing, [], 'ids used but absent from index.html: ' + missing.join(', '));
   assert.ok(used.size > 40, 'expected to find the ids the scripts use, found ' + used.size);
@@ -43,6 +43,8 @@ test('change bars: direction, clipping and missing baseline', () => {
   assert.ok(row.classList.contains('na')); assert.equal(val.textContent, 'no base');
   ui.setRow('brow', undefined, undefined);
   assert.equal(val.textContent, '–');
+  ui.setRow('brow', undefined, 1.0); // missing raw with finite z must not throw
+  assert.match(row.title, /value –, z 1\.00/);
   ui.setRow('unknown', 1, 1); // must not throw
 });
 
@@ -224,7 +226,7 @@ test('chart.js: math utilities, range, segments, zones and smoothPath', async ()
   assert.ok(p.startsWith('M0.0 0.0C'));
 });
 
-test('createTrend SVG renderer: builds curves and places head', async () => {
+test('createTrend SVG renderer: builds curves, places head and updates zones/gradient', async () => {
   const { createTrend } = await import('../chart.js');
   const svg = $('trend');
   const tr = createTrend(svg);
@@ -236,6 +238,8 @@ test('createTrend SVG renderer: builds curves and places head', async () => {
   assert.ok(d.startsWith('M') && d.includes('C'), `path d was: ${d}`);
   const cx = Number($('idxHead').getAttribute('cx'));
   assert.ok(Number.isFinite(cx) && cx > 0);
+  assert.match($('trendZones').innerHTML, /Baseline/);
+  assert.ok(Number.isFinite(Number($('trendStroke').getAttribute('y1'))));
 });
 
 test('fast live display: zoneIdxOf hysteresis, makeBase, tensionOf and tweenNum formatting', async () => {
@@ -389,5 +393,16 @@ test('session summary: phaseStats aggregation, directionChecks agreement and ren
   assert.match($('sumMeta').textContent, /S02/);
   assert.equal(document.querySelectorAll('.sumphase-card').length, 3);
   assert.equal(document.querySelectorAll('.sumcheck-row').length, 2);
+  assert.match($('sumChecks').textContent, /residual tension after a stressor/);
   assert.ok($('sumChart').innerHTML.length > 50);
+
+  // setupDialogDismiss: child element activation at (0,0) does not close dialog, backdrop click on dialog does
+  const dlg = $('summary');
+  dlg.getBoundingClientRect = () => ({ top: 100, left: 100, width: 400, height: 300 });
+  ui.openDialog(dlg);
+  assert.ok(dlg.hasAttribute('open'));
+  $('sumTitle').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 0, clientY: 0 }));
+  assert.ok(dlg.hasAttribute('open'), 'keyboard/child element click inside dialog must not light-dismiss');
+  dlg.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 20, clientY: 20 }));
+  assert.ok(!dlg.hasAttribute('open'), 'backdrop click on dialog outside bounding box closes dialog');
 });

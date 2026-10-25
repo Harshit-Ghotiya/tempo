@@ -68,7 +68,7 @@ export function setRow(k, raw, z) {
   const c = Math.max(-3, Math.min(3, z));
   i.style.left = (c < 0 ? 50 + c / 3 * 50 : 50) + '%'; i.style.width = Math.abs(c) / 3 * 50 + '%';
   v.textContent = (z >= 0 ? '+' : '−') + Math.abs(z).toFixed(1);
-  r.title = `value ${raw.toFixed(2)}, z ${z.toFixed(2)}`;
+  r.title = `value ${Number.isFinite(raw) ? raw.toFixed(2) : '–'}, z ${z.toFixed(2)}`;
 }
 
 export function setDot(el, q) { el.dataset.q = level(q); }
@@ -178,17 +178,16 @@ export function closeDialog(d) {
 }
 
 export function setupDialogDismiss(d) {
-  if (!d) return;
-  if (typeof HTMLDialogElement !== 'undefined' && !('closedBy' in HTMLDialogElement.prototype)) {
-    d.addEventListener('click', e => {
-      const rect = d.getBoundingClientRect();
-      const inDialog = (
-        rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
-        rect.left <= e.clientX && e.clientX <= rect.left + rect.width
-      );
-      if (!inDialog) closeDialog(d);
-    });
-  }
+  if (!d || 'closedBy' in d) return;
+  d.addEventListener('click', e => {
+    if (e.target !== d) return;
+    const rect = d.getBoundingClientRect();
+    const inDialog = (
+      rect.top <= e.clientY && e.clientY <= rect.top + rect.height &&
+      rect.left <= e.clientX && e.clientX <= rect.left + rect.width
+    );
+    if (!inDialog) closeDialog(d);
+  });
 }
 
 const PHASE_COLORS = { baseline: 'var(--green)', stressor: 'var(--orange)', recovery: 'var(--teal)' };
@@ -217,7 +216,10 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       const tnStr = s.tension.mean != null ? `${s.tension.mean >= 0 ? '+' : '−'}${Math.abs(s.tension.mean).toFixed(2)}` : '–';
       const pkStr = s.tension.peak != null ? `Peak: ${s.tension.peak >= 0 ? '+' : '−'}${Math.abs(s.tension.peak).toFixed(2)}` : '';
       const hrStr = s.hr.mean != null ? `Pulse: ${Math.round(s.hr.mean)} bpm (${s.hr.n} readings)` : 'No pulse lock';
-      const valStr = s.valence != null ? `Valence: ${s.valence.toFixed(2)} · Arousal: ${s.arousal.toFixed(2)}` : '';
+      const valStr = s.valence != null && s.arousal != null ? `Valence: ${s.valence.toFixed(2)} · Arousal: ${s.arousal.toFixed(2)}` : '';
+      const gunaStr = s.guna?.sattva != null
+        ? `Sattva ${Math.round(s.guna.sattva * 100)}% · Rajas ${Math.round(s.guna.rajas * 100)}% · Tamas ${Math.round(s.guna.tamas * 100)}%`
+        : '';
 
       return `
         <div class="sumphase-card" style="--phase-color:${color}">
@@ -233,7 +235,7 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
             <div>
               <div class="sum-col-label">Tempo measured</div>
               <div class="sum-stat-big">${tnStr} <span style="font-size:14px;color:var(--text-2);font-family:var(--font-display)">${znLabel}</span></div>
-              <div class="sum-subtext">${[pkStr, hrStr, valStr].filter(Boolean).join('<br>')}</div>
+              <div class="sum-subtext">${[pkStr, hrStr, valStr, gunaStr].filter(Boolean).join('<br>')}</div>
             </div>
           </div>
         </div>
@@ -283,7 +285,9 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     const reps = (stats || []).map(s => s.report).filter(Boolean);
     for (const rep of reps) {
       const cx = xOf(rep.t);
-      const near = valid.reduce((best, r) => Math.abs(r.t - rep.t) < Math.abs(best.t - rep.t) ? r : best, valid[0] || { tension_idx: 0 });
+      const near = valid.length
+        ? valid.reduce((best, r) => Math.abs(r.t - rep.t) < Math.abs(best.t - rep.t) ? r : best, valid[0])
+        : null;
       const cy = near ? yOf(near.tension_idx) : yOf(0);
       checkMarks += `
         <line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${H - padB}" stroke="var(--line)" stroke-width="1"/>
@@ -313,7 +317,7 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
   const sumChecks = $('sumChecks');
   if (sumChecks) {
     const arrow = s => s == null ? '–' : s > 0 ? '↑ rise' : s < 0 ? '↓ drop' : '→ steady';
-    sumChecks.innerHTML = (checks || []).map(c => {
+    const rowsHtml = (checks || []).map(c => {
       const statusClass = c.agree === true ? 'agree' : c.agree === false ? 'diff' : 'na';
       const statusText = c.agree === true ? '✓ Same direction' : c.agree === false ? '✗ Different direction' : 'Not enough data';
       const fromName = c.from.charAt(0).toUpperCase() + c.from.slice(1);
@@ -327,6 +331,17 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
         </div>
       `;
     }).join('');
+    let noteHtml = '';
+    if (stats?.length >= 3 && checks?.[0]?.agree && checks?.[1]?.agree) {
+      const bMean = stats[0]?.tension?.mean, sMean = stats[1]?.tension?.mean, rMean = stats[2]?.tension?.mean;
+      if (bMean != null && sMean != null && rMean != null) {
+        const rise = sMean - bMean, drop = sMean - rMean;
+        if (rise > 0.15 && drop > 0 && drop < 0.55 * rise) {
+          noteHtml = '<div class="sum-subtext" style="margin-top:4px">Note: Facial and autonomic tension settled partially during Recovery; residual tension after a stressor often takes 2–3 minutes to return fully to baseline.</div>';
+        }
+      }
+    }
+    sumChecks.innerHTML = rowsHtml + noteHtml;
   }
 }
 
