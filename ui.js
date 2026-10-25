@@ -57,11 +57,12 @@ export function setRow(k, raw, z) {
   if (!r) return;
   const i = r.querySelector('i'), v = r.querySelector('.val');
   if (z == null) {
-    r.classList.add('na'); i.style.width = '0%';
+    r.classList.add('na'); delete r.dataset.dir; i.style.width = '0%';
     v.textContent = raw == null ? '–' : 'no base'; r.title = raw == null ? 'No signal' : 'No baseline for this feature yet';
     return;
   }
   r.classList.remove('na');
+  r.dataset.dir = z >= 0 ? 'up' : 'down';
   const c = Math.max(-3, Math.min(3, z));
   i.style.left = (c < 0 ? 50 + c / 3 * 50 : 50) + '%'; i.style.width = Math.abs(c) / 3 * 50 + '%';
   v.textContent = (z >= 0 ? '+' : '−') + Math.abs(z).toFixed(1);
@@ -74,13 +75,49 @@ export function ring(p) { $('ring').style.strokeDashoffset = String(339.3 * (1 -
 // Self-report sliders: a bar counts only once touched, so there is no default value to anchor on.
 export function initRate(id) {
   const i = $(id), r = i.closest('.rate'), o = r.querySelector('output');
-  i.addEventListener('input', () => { r.dataset.t = '1'; o.textContent = i.value; });
+  i.style.setProperty('--control-value', i.value);
+  i.addEventListener('input', () => {
+    r.dataset.t = '1'; o.textContent = i.value;
+    i.style.setProperty('--control-value', i.value);
+  });
 }
 export function resetRate(id) {
   const i = $(id), r = i.closest('.rate');
   i.value = 5; r.dataset.t = '0'; r.querySelector('output').textContent = '–';
+  i.style.setProperty('--control-value', '5');
 }
 export const touched = id => $(id).closest('.rate').dataset.t === '1';
+
+export function nextScheme(stored, systemDark) {
+  const rendered = stored ?? (systemDark ? 'dark' : 'light');
+  const target = rendered === 'dark' ? 'light' : 'dark';
+  return target === (systemDark ? 'dark' : 'light') ? null : target;
+}
+
+export function initTheme(btn) {
+  if (!btn) return;
+  const sysDark = () => typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches;
+  const apply = val => {
+    const meta = document.querySelector('meta[name="color-scheme"]');
+    if (meta) meta.content = val ?? 'light dark';
+    btn.dataset.scheme = val ?? (sysDark() ? 'dark' : 'light');
+  };
+  btn.addEventListener('click', () => {
+    let stored = null;
+    try { stored = localStorage.getItem('color-scheme'); } catch (e) {}
+    const nxt = nextScheme(stored, sysDark());
+    try {
+      if (nxt) localStorage.setItem('color-scheme', nxt);
+      else localStorage.removeItem('color-scheme');
+    } catch (e) {}
+    apply(nxt);
+  });
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('storage', e => {
+      if (e.key === 'color-scheme') apply(e.newValue);
+    });
+  }
+}
 
 export function drawer(open) {
   $('drawer').classList.toggle('open', open); $('scrim').classList.toggle('open', open);

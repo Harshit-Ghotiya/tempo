@@ -176,6 +176,14 @@ test('voice acoustic scorer (voice.js): silence abstention, high arousal rajas a
   assert.ok(f.rms > 0.09 && f.zcr > 0.5 && f.centroid > 0);
 });
 
+test('nextScheme: two-state cycling per dark-mode-toggle guide', () => {
+  assert.equal(ui.nextScheme(null, false), 'dark');
+  assert.equal(ui.nextScheme('dark', false), null);
+  assert.equal(ui.nextScheme(null, true), 'light');
+  assert.equal(ui.nextScheme('light', true), null);
+  assert.equal(ui.nextScheme('dark', true), 'light');
+});
+
 test('launcher copies every module the page loads', () => {
   const appSrc = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
   const buildSh = readFileSync(new URL('../launcher/build.sh', import.meta.url), 'utf8');

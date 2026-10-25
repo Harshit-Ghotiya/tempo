@@ -1,10 +1,21 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.6 (face-first stress detector, redesigned portal, packaged apps, on top of v0.5)  
+**Project version:** v0.7.0 (Apple-style design system, real-time stress signals, packaged apps, on top of v0.6)  
 **Date:** 2026-10-26  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.0 update (2026-10-26): Apple-style design system and theme switcher (feat/ui-design-system)
+
+Changed
+1. `styles.css`: Created a dedicated stylesheet with an Apple-style design token system (SF Pro typography, light/dark semantic variables via `light-dark()` and media queries, subtle card depth, spring easing), extracting all inline CSS from `index.html`.
+2. `index.html`: Refactored to an Apple Health / visionOS-inspired layout: sticky frosted-glass header with live/on-device badges, two-column consent hero with feature chips and iOS-style toggle switches, setup ring card with inset checks, and live bento grid layout with dedicated cards for pulse, affect circumplex, Triguna balance, expression, and movement.
+3. `ui.js`: Added `nextScheme(stored, systemDark)` and `initTheme(btn)` for 2-state light/dark cycling that synchronizes `<meta name="color-scheme">` without FOUC; updated `setRow` to annotate change direction (`data-dir="up|down"`), and added `--control-value` tracking for range sliders.
+4. `app.js` and `VERSION.txt`: Bumped project version to `v0.7.0`.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (26 tests pass).
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.6.6 update (2026-10-26): accurate description and fast startup for facial affect (fix/affect-honest-label)
 

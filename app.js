@@ -1,8 +1,8 @@
-// Tempo v0.6: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
+// Tempo v0.7.0: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
 import {createTracker,isSkin} from './hr.js';
 import {initAffect,evalAffect} from './affect.js';
 import {createVoiceMonitor} from './voice.js';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer} from './ui.js';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -39,6 +39,7 @@ window.setVoice=(p,q=1)=>{voice={p,q,t:performance.now()}};
 // Any visibility change invalidates the next LOOKBACK_S seconds: timers and frames are throttled in hidden tabs.
 document.addEventListener('visibilitychange',()=>{if(start)hiddenAt=(performance.now()-start)/1e3});
 $('guna').hidden=!DEMO_GUNA;
+initTheme($('themeBtn'));
 // Tell the launcher this page is open; it quits a few minutes after the last page closes.
 const ping=()=>fetch('/__alive',{cache:'no-store'}).catch(()=>{});ping();setInterval(ping,5000).unref?.();
 
