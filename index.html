@@ -141,7 +141,8 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
   <label class="sw"><input type="checkbox" id="uFace"><div><b>Facial expression</b><span>Brow, eyes, mouth and gaze, compared with your own baseline</span></div></label>
   <label class="sw"><input type="checkbox" id="uPose"><div><b>Posture and movement</b><span>Shoulders, sway, hand movement</span></div></label>
   <label class="sw"><input type="checkbox" id="uPulse"><div><b>Pulse from skin colour</b><span>Experimental and less reliable than the face signals. Leave off unless you want it.</span></div></label>
-  <label class="sw"><input type="checkbox" id="ok"><div><b>I agree</b><span>Video is processed on this device only and is never recorded, stored or uploaded. Numbers are saved only when you press Export. You can stop at any time. Experimental, not a diagnostic tool.</span></div></label>
+  <label class="sw"><input type="checkbox" id="uVoice"><div><b>Voice tone from microphone</b><span>Experimental acoustic arousal and visual–voice agreement while speaking. Leave off unless you want it.</span></div></label>
+  <label class="sw"><input type="checkbox" id="ok"><div><b>I agree</b><span>Video and audio are processed on this device only and are never recorded, stored or uploaded. Numbers are saved only when you press Export. You can stop at any time. Experimental, not a diagnostic tool.</span></div></label>
   <div class="act"><button class="btn" id="go" disabled>Start setup</button><span class="dusk small" id="msg" role="status"></span></div>
  </div>
 </section>
@@ -149,7 +150,7 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
 <section id="run">
  <div class="cam">
   <video id="cam" playsinline muted></video>
-  <div class="dots"><span><i class="dot" id="dFace"></i>Face</span><span><i class="dot" id="dPulse"></i>Pulse</span><span><i class="dot" id="dPose"></i>Posture</span></div>
+  <div class="dots"><span><i class="dot" id="dFace"></i>Face</span><span><i class="dot" id="dPulse"></i>Pulse</span><span><i class="dot" id="dPose"></i>Posture</span><span><i class="dot" id="dVoice"></i>Voice</span></div>
   <p class="dusk small" style="margin-top:10px">Processed on this device. Nothing is recorded.</p>
  </div>
  <div>

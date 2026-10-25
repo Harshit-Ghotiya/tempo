@@ -164,3 +164,14 @@ test('pre-trained facial affect (affect.js): valence, arousal and circumplex qua
   assert.equal(onnx.label, 'engaged');
   assert.equal(quadrant(0.05, -0.05), 'neutral');
 });
+
+test('voice acoustic scorer (voice.js): silence abstention, high arousal rajas and calm sattva', async () => {
+  const { scoreVoice, acousticFeatures } = await import('../voice.js');
+  assert.equal(scoreVoice({ rms: 0.002 }).p, null); // abstains on silence
+  const calm = scoreVoice({ rms: 0.055, centroid: 1300, zcr: 0.08 });
+  assert.ok(calm.p.sattva > calm.p.rajas && calm.p.sattva > calm.p.tamas, JSON.stringify(calm));
+  const loudBright = scoreVoice({ rms: 0.14, centroid: 2400, zcr: 0.18 });
+  assert.ok(loudBright.p.rajas > loudBright.p.sattva && loudBright.p.rajas > loudBright.p.tamas, JSON.stringify(loudBright));
+  const f = acousticFeatures(new Float32Array([0.1, -0.1, 0.1, -0.1]), new Float32Array([-100, -20, -80]), 48000);
+  assert.ok(f.rms > 0.09 && f.zcr > 0.5 && f.centroid > 0);
+});

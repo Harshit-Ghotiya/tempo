@@ -6,6 +6,15 @@
 
 ---
 
+## v0.6.4 update (2026-10-25): opt-in on-device microphone voice scorer for window.setVoice (voice.js)
+
+Changed
+1. `voice.js` adds an on-device WebAudio acoustic monitor (`acousticFeatures`, `scoreVoice`, `createVoiceMonitor`) that computes RMS energy, zero-crossing rate and spectral centroid in memory, abstains during silence, and feeds voice Guṇa prior probabilities into `window.setVoice(p, q)` so live visual–voice agreement (`#ag`) works during speech. Audio is never recorded, stored or uploaded.
+2. `index.html` and `app.js` add an optional `#uVoice` toggle on the consent sheet (off by default) and a `#dVoice` quality indicator dot.
+
+Checked: `node --check` on `app.js`, `ui.js`, `hr.js`, `affect.js`, `voice.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (24 tests pass); `train_guna.py` on synthetic data.
+Not checked: live microphone capture with a real speaker in the browser; real participant stress data; packaged Mac or Windows app runs.
+
 ## v0.6.3 update (2026-10-25): in-browser pre-trained facial Valence and Arousal (affect.js)
 
 Changed

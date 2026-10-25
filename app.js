@@ -1,6 +1,7 @@
 // Tempo v0.6: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
 import {createTracker,isSkin} from './hr.js';
 import {initAffect,evalAffect} from './affect.js';
+import {createVoiceMonitor} from './voice.js';
 import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
@@ -28,7 +29,7 @@ const MAP={
 const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN,
  sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(v=>(v-m)**2)))},fin=a=>a.filter(Number.isFinite);
 const median=a=>{const s=[...a].sort((p,q)=>p-q),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
-let use,face,pose,tracker,stream,running=false,start,base,timer,lastT=-1,fc=0,pw=null,voice=null,trained=null;
+let use,face,pose,tracker,stream,vmon=null,running=false,start,base,timer,lastT=-1,fc=0,pw=null,voice=null,trained=null;
 let fbuf=[],pbuf=[],rgb=[],cal={},log=[];
 let participantId='',sessionId='',reports=[],phaseStart=CAL_END,hiddenAt=-1;
 const cv=document.createElement('canvas'),cx=cv.getContext?.('2d',{willReadFrequently:true});
@@ -204,6 +205,7 @@ function show(x,z,q,el,all,ag,tn,af,status){
  if(use.pulse){const hr=x.hr??null,hrv=x.hrv??null;tweenNum($('hrNum'),hr);tweenNum($('hrvNum'),hrv);$('hrNote').textContent=hr!==null?'experimental estimate':'no clear pulse signal'}
  for(const [k] of [...ROWS.face,...ROWS.pose])setRow(k,x[k],z[k]);
  setDot($('dFace'),use.face?q.face:null);setDot($('dPulse'),use.pulse?q.rppg:null);setDot($('dPose'),use.pose?q.pose:null);
+ setDot($('dVoice'),use.voice?(voice&&performance.now()-voice.t<15e3?voice.q:0.1):null);
  $('win').textContent=status;$('win').dataset.ok=status==='clean window'?'1':'0';
  $('tb').innerHTML=Object.keys(FEAT).map(k=>`<tr><td>${k}</td><td>${x[k]==null?'–':x[k].toFixed(2)}</td><td>${z[k]==null?'–':z[k].toFixed(1)}</td></tr>`).join('');
  $('v_valence').textContent=af?af.valence.toFixed(2):'–';$('v_arousal').textContent=af?af.arousal.toFixed(2):'–';$('v_affect').textContent=af?af.label:'–';
@@ -283,16 +285,16 @@ $('saveReport').onclick=()=>{
  toast(`Check-in saved for ${PHASE[phase]}. It labels the last ${LABEL_SPAN_S} s of this phase.`);
 };
 
-const chk=()=>{$('go').disabled=!($('ok').checked&&($('uFace').checked||$('uPulse').checked||$('uPose').checked))};
-['ok','uFace','uPulse','uPose'].forEach(id=>$(id).onchange=chk);['participantId','sessionId'].forEach(id=>$(id).oninput=chk);
+const chk=()=>{$('go').disabled=!($('ok').checked&&($('uFace').checked||$('uPulse').checked||$('uPose').checked||$('uVoice').checked))};
+['ok','uFace','uPulse','uPose','uVoice'].forEach(id=>$(id).onchange=chk);['participantId','sessionId'].forEach(id=>$(id).oninput=chk);
 
 $('go').onclick=async()=>{
- use={face:$('uFace').checked,pulse:$('uPulse').checked,pose:$('uPose').checked};
+ use={face:$('uFace').checked,pulse:$('uPulse').checked,pose:$('uPose').checked,voice:$('uVoice').checked};
  participantId=$('participantId').value.trim();sessionId=$('sessionId').value.trim();
  if(!participantId||!sessionId){$('msg').textContent='Enter a participant ID and a session ID.';return}
  $('msg').textContent='Starting the camera and loading models. The very first run downloads two small model files, which can take a minute.';
  try{
-  stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,frameRate:30},audio:false});
+  stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,frameRate:30},audio:use.voice});
   const v=$('cam');v.srcObject=stream;await v.play();
   await init();
  }catch(e){
@@ -300,6 +302,7 @@ $('go').onclick=async()=>{
   if(stream)stream.getTracks().forEach(t=>t.stop());return;
  }
  fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;
+ if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q)):null;
  reports=[];idxSeries=[];tensionS=null;phaseStart=CAL_END;
  document.querySelector('input[name=phase][value=baseline]').checked=true;$('reportPhase').textContent='Baseline';
  $('who').textContent=`${participantId} (${sessionId})`;$('cam').classList.add('on');
@@ -308,7 +311,7 @@ $('go').onclick=async()=>{
 };
 
 $('stop').onclick=()=>{
- running=false;clearInterval(timer);if(stream)stream.getTracks().forEach(t=>t.stop());
+ running=false;clearInterval(timer);if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
 };
