@@ -151,3 +151,16 @@ test('models.json loader: trained modality inference, log-linear fusion and fall
     globalThis.fetch = origFetch;
   }
 });
+
+test('pre-trained facial affect (affect.js): valence, arousal and circumplex quadrant', async () => {
+  const { evalAffect, quadrant } = await import('../affect.js');
+  assert.equal(evalAffect({}, {}), null); // abstains when too few features are present
+  const tense = evalAffect({}, { browLower: 2, lidTight: 1.5, lipTight: 1.5, smile: -1, expressivity: 1 });
+  assert.ok(tense.valence < 0 && tense.arousal > 0 && tense.label === 'tense-alert', JSON.stringify(tense));
+  const calmPos = evalAffect({}, { smile: 2, browLower: -1, lidTight: -1, eyeWide: -1, expressivity: -1 });
+  assert.ok(calmPos.valence > 0 && calmPos.arousal < 0 && calmPos.label === 'calm-positive', JSON.stringify(calmPos));
+  const onnx = evalAffect({}, {}, { valence: 0.4, arousal: 0.6 });
+  assert.equal(onnx.source, 'hsemotion-onnx');
+  assert.equal(onnx.label, 'engaged');
+  assert.equal(quadrant(0.05, -0.05), 'neutral');
+});

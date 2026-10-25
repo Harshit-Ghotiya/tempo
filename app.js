@@ -1,5 +1,6 @@
 // Tempo v0.6: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
 import {createTracker,isSkin} from './hr.js';
+import {initAffect,evalAffect} from './affect.js';
 import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer} from './ui.js';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
@@ -57,7 +58,7 @@ async function assets(){
  return{vis:CDN,model:n=>GCS+MODEL_PATH[n]};
 }
 async function init(){
- await loadModel();
+ await loadModel();initAffect();
  const A=await assets(),{FilesetResolver,FaceLandmarker,PoseLandmarker}=await import(A.vis+'/vision_bundle.mjs');
  const fs=await FilesetResolver.forVisionTasks(A.vis+'/wasm');
  const mk=async(C,url,o)=>{let err;for(const delegate of['GPU','CPU']){try{return await C.createFromOptions(fs,{baseOptions:{modelAssetPath:url,delegate},runningMode:'VIDEO',...o})}catch(e){err=e}}throw err};
@@ -193,7 +194,7 @@ let idxSeries=[],tensionS=null;
 buildRows('rowsFace',ROWS.face);buildRows('rowsPose',ROWS.pose);RATE.forEach(initRate);
 
 const stateOf=v=>v==null?'Not enough signal yet':v<-.75?'More relaxed than your baseline':v<=.75?'Near your baseline':v<=1.5?'Somewhat above your baseline':'Well above your baseline';
-function show(x,z,q,el,all,ag,tn,status){
+function show(x,z,q,el,all,ag,tn,af,status){
  if(tn!==null)idxSeries.push({t:el,v:tn});
  idxSeries=idxSeries.filter(p=>p.t>el-180);
  $('stateWord').textContent=stateOf(tn);$('stateNum').textContent=tn===null?'–':(tn>=0?'+':'−')+Math.abs(tn).toFixed(1);
@@ -205,6 +206,7 @@ function show(x,z,q,el,all,ag,tn,status){
  setDot($('dFace'),use.face?q.face:null);setDot($('dPulse'),use.pulse?q.rppg:null);setDot($('dPose'),use.pose?q.pose:null);
  $('win').textContent=status;$('win').dataset.ok=status==='clean window'?'1':'0';
  $('tb').innerHTML=Object.keys(FEAT).map(k=>`<tr><td>${k}</td><td>${x[k]==null?'–':x[k].toFixed(2)}</td><td>${z[k]==null?'–':z[k].toFixed(1)}</td></tr>`).join('');
+ $('v_valence').textContent=af?af.valence.toFixed(2):'–';$('v_arousal').textContent=af?af.arousal.toFixed(2):'–';$('v_affect').textContent=af?af.label:'–';
  if(DEMO_GUNA||trained){for(const g of G)$('v_'+g).textContent=all?Math.round(100*all[g])+'%':'–';$('ag').textContent=ag==null?'–':ag.toFixed(2)}
 }
 
@@ -223,7 +225,7 @@ function setup(el,x,q){ // setup stage: ring, wording and live checks while the 
 
 function tick(){
  const el=(performance.now()-start)/1e3,{x,q}=feats(),pre=el<CAL_END,phase=el<SETTLE_S?'settle':pre?'calibration':phaseNow();
- let z={},ps={},all=null,ag=null,tn=null;
+ let z={},ps={},all=null,ag=null,tn=null,af=null;
  if(pre){
   // Baseline only from settled, good-quality windows: the first seconds of a session are mostly movement.
   if(el>=SETTLE_S+WIN_S)for(const k in x)if(FEAT[k]&&(q[FEAT[k]]??0)>MIN_Q)(cal[k]??=[]).push(x[k]);
@@ -238,6 +240,7 @@ function tick(){
   // Facial tension index: needs a usable face signal and at least 4 features with a baseline; smoothed so it does not flicker.
   const zs=Object.keys(TENSION).filter(k=>z[k]!=null),raw=q.face>=MIN_Q&&zs.length>=4?zs.reduce((s,k)=>s+TENSION[k]*z[k],0)/zs.reduce((s,k)=>s+Math.abs(TENSION[k]),0):null;
   tensionS=raw===null?null:tensionS===null?raw:tensionS+.3*(raw-tensionS);tn=tensionS;
+  if(q.face>=MIN_Q)af=evalAffect(x,z);
   if(DEMO_GUNA||trained){
    for(const m of['face','rppg','pose']){const p=modP(m,z,x);if(p&&q[m]>MIN_Q)ps[m]={p,q:q[m]}}
    const vis=fuse(ps),vo=voice&&performance.now()-voice.t<15e3?voice:null;
@@ -247,11 +250,11 @@ function tick(){
  }
  const ws=Math.max(0,el-WIN_S),fs0=el-LOOKBACK_S,inside=!pre&&fs0>=phaseStart&&fs0>hiddenAt; // features look back up to LOOKBACK_S
  if(!pre)$('phaseTime').textContent=mmss(Math.max(0,el-phaseStart));
- show(x,z,q,el,all,ag,tn,pre?'setting up':inside?'clean window':fs0<phaseStart?'wait: phase changed':'wait: tab was hidden');
+ show(x,z,q,el,all,ag,tn,af,pre?'setting up':inside?'clean window':fs0<phaseStart?'wait: phase changed':'wait: tab was hidden');
  log.push({
   participant_id:participantId,session_id:sessionId,t:+el.toFixed(1),
   window_start_s:+ws.toFixed(1),window_end_s:+el.toFixed(1),feature_start_s:+Math.max(0,fs0).toFixed(1),phase,phase_start_s:+phaseStart.toFixed(1),
-  transition:!pre&&!inside,tension_idx:tn??'',
+  transition:!pre&&!inside,tension_idx:tn??'',valence:af?+af.valence.toFixed(3):'',arousal:af?+af.arousal.toFixed(3):'',
   ...x,...Object.fromEntries(Object.entries(z).map(([k,v])=>['z_'+k,v])),
   ...(all?{p_sattva:all.sattva,p_rajas:all.rajas,p_tamas:all.tamas}:{}),
   face_quality:q.face??'',rppg_quality:q.rppg??'',pose_quality:q.pose??'',agree:ag

@@ -6,6 +6,15 @@
 
 ---
 
+## v0.6.3 update (2026-10-25): in-browser pre-trained facial Valence and Arousal (affect.js)
+
+Changed
+1. `affect.js` provides on-device facial Valence and Arousal estimation in `[-1, 1]` and circumplex labels (`calm-positive`, `engaged`, `tense-alert`, `subdued`, `neutral`). It loads HSEmotion (`enet_b0_8_va_mtl.onnx` via `onnxruntime-web`) when available and falls back to a pre-trained FACS circumplex projection over MediaPipe's 52 blendshape action-unit composites so it works offline with zero latency.
+2. `index.html` and `app.js` display `valence`, `arousal` and the circumplex label in the researcher details panel (explicitly labelled as an unvalidated AffectNet / FACS prior) and export `valence` and `arousal` in the CSV.
+
+Checked: `node --check` on `app.js`, `ui.js`, `hr.js`, `affect.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (23 tests pass).
+Not checked: live webcam session on a real face; ONNX model download in a real browser; real participant stress data.
+
 ## v0.6.2 update (2026-10-25): skin-pixel gating and HRV (RMSSD) for webcam pulse
 
 Changed
