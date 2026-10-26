@@ -1,10 +1,32 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.5 (real-time face landmark mesh and pulse ROIs overlay)  
-**Date:** 2026-10-26  
+**Project version:** v0.7.6 (guided study protocol, background execution, calibration bounds, signal tuning, and UI stabilization)  
+**Date:** 2026-10-27  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.6 update (2026-10-27): guided study protocol, background execution, calibration bounds, signal tuning, and UI stabilization (feat/guided-study-protocol)
+
+Changed
+1. `index.html`: Added `#uGuided` toggle with `#guidedSecs` duration selector (60s, 90s, 120s); added camera Picture-in-Picture button `#btnPip`; added guided phase progress bar `#guidedBar` with `#guidedFill` in the top bar; replaced status element with `<div class="st-banner col-12" id="st" role="status"></div>`; bumped asset cache query to `?v=0.7.6`.
+2. `styles.css`: Added `.st-banner` alert banner styles with `.st-banner:empty { display: none !important; }` to resolve text overlapping cards; added guided protocol controls (`.guided-opt`, `.guided-lbl`, `.guided-bar`, `.guided-fill`); added camera PiP button styling (`.cam-pip`); increased `.top` sticky header backdrop opacity to 92% with subtle shadow to eliminate scrolled card bleed-through; increased `.tiles-grid` minmax to 210px to eliminate awkward spacing above Expression card.
+3. `app.js`:
+   - Signal tuning: lowered blendshape floors (`lipDown: .002`, `lipTight: .004`, `eyeWide: .004`, `browRaise: .012`, `blink: 4.5`, `headMove: .18`, `sway: .08`) restoring movement to subtle facial cues; removed `blink` from `TENSION` (cognitive focus suppresses blinking, so low blink should not penalize stress); lowered `headMove` weight to 0.15.
+   - Calibration caps: `makeBase` caps `browLower` median at 0.14 and `lidTight` at 0.28 (calculating MAD from raw median before capping) to prevent furrowed brows during setup from masking true stress; lowered `MIN_CAL_RPPG` to 8 clean windows for pulse/HRV baseline.
+   - Display smoothing: added EMA smoothing (`zSmooth`, $\tau = 1.5$) to Expression and Pose bars to eliminate abrupt bar jumping.
+   - HRV display hold: `show()` holds last valid HRV up to 10s (`lastHrv`, identical to `lastHr`).
+   - Guided study protocol: tracks phase elapsed time against `guidedTargetS`, animates top progress bar, plays two-tone WebAudio chime, displays reminder toast, opens check-in drawer automatically at phase completion, and auto-advances phases (`baseline -> stressor -> recovery -> summary`).
+   - Background execution: added 15 fps timer pump on `document.hidden` via `visibilitychange` to maintain feature collection when switching tabs/windows, alongside native Picture-in-Picture (`#btnPip`).
+   - Setup protection: `#go` disables immediately with `'Starting...'` to prevent duplicate timer creation; clears existing intervals; pre-creates and resumes WebAudio `AudioContext` synchronously on user gesture and passes it to `createVoiceMonitor`.
+   - Banner warning: `#st` checks only core face features (`browLower`, `lidTight`, `smile`, `expressivity`), eliminating spurious warnings for intermittent features like `fidget`, `hr`, and `hrv`.
+4. `ui.js`: Lowered `hrvShown` quality gate to $q \ge 0.30$ and widened plausible RMSSD bounds to 15–200 ms.
+5. `voice.js`: Lowered `MIN_RMS` from 0.012 to 0.004 to accommodate standard built-in laptop microphones; updated `createVoiceMonitor` to accept an existing unlocked `AudioContext`.
+6. `launcher/`: Updated `launcher/site/` with latest web assets; rebuilt `launcher/tempo-launcher`.
+7. `tests/ui.test.mjs`: Updated unit tests for `makeBase` calibration caps, rPPG sample threshold, and `hrvShown` gate.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass); `./launcher/tempo-launcher -h`.
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.5 update (2026-10-26): real-time face landmark mesh, pulse ROIs overlay, and cross-branch audit/refactor (feat/face-points-overlay)
 

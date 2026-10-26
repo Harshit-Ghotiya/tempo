@@ -89,6 +89,12 @@
    <span class="sw-text"><b>I agree</b><span>Video and audio are processed on this device only and are never recorded, stored or uploaded. Numbers are saved only when you press Export. You can stop at any time. Experimental, not a diagnostic tool.</span></span>
    <input type="checkbox" id="ok" switch role="switch">
   </label>
+  <div class="guided-opt">
+   <label class="guided-lbl">
+    <input type="checkbox" id="uGuided" checked switch role="switch">
+    <span><b>Guided study protocol</b>: 3 × <select id="guidedSecs"><option value="60">60s</option><option value="90" selected>90s</option><option value="120">120s</option></select> auto-timed phases</span>
+   </label>
+  </div>
   <div class="act">
    <button class="btn btn-full" id="go" disabled>Start setup</button>
    <span class="dusk small" id="msg" role="status"></span>
@@ -109,6 +115,9 @@
   </div>
   <div class="cam-controls">
    <label class="mesh-toggle"><input type="checkbox" id="uMesh" switch role="switch"><span>Show tracking points</span></label>
+   <button class="iconbtn cam-pip" id="btnPip" title="Picture in Picture (keep camera running in background)" aria-label="Picture in Picture">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="10" width="8" height="8" rx="1" fill="currentColor" opacity="0.35"/><path d="M14 12h4v4"/></svg>
+   </button>
   </div>
   <div class="dots">
    <span class="signal-chip"><i class="dot" id="dFace"></i>Face</span>
@@ -147,6 +156,7 @@
      <label data-phase="recovery"><input type="radio" name="phase" value="recovery"><span>Recovery</span></label>
     </div>
     <span class="timer" id="phaseTime">0:00</span>
+    <div class="guided-bar" id="guidedBar" hidden title="Phase progress"><div class="guided-fill" id="guidedFill" style="width:0%"></div></div>
     <span class="pill" id="win" role="status">setting up</span>
     <span class="barline-gap"></span>
     <button class="btn" id="openReport">
@@ -154,7 +164,7 @@
      Check in
     </button>
    </div>
-   <p class="dusk small col-12" id="st" role="status" style="margin:-6px 0 6px"></p>
+   <div class="st-banner col-12" id="st" role="status"></div>
 
    <div class="card hero-card col-12">
     <div class="hero-head">

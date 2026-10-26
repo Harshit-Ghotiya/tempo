@@ -164,7 +164,7 @@ export function hrView(last, now, holdS = 10) {
   return age <= 2 ? { v: last.v, state: 'live', age } : age <= holdS ? { v: last.v, state: 'held', age } : { v: null, state: 'none', age };
 }
 
-export const hrvShown = (hrv, q) => Number.isFinite(hrv) && hrv >= 15 && hrv <= 150 && (q ?? 0) >= 0.45 ? hrv : null;
+export const hrvShown = (hrv, q) => Number.isFinite(hrv) && hrv >= 15 && hrv <= 200 && (q ?? 0) >= 0.30 ? hrv : null;
 
 // Modal dialog helpers
 export function openDialog(d) {

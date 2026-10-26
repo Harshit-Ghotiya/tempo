@@ -254,14 +254,21 @@ test('fast live display: zoneIdxOf hysteresis, makeBase, tensionOf and tweenNum 
   assert.equal(zoneIdxOf(null, 1), null);
 
   // makeBase: drops features with < 25 calibration samples, computes median and floor
+  // caps browLower at 0.14 and lidTight at 0.28 to prevent squint/furrow masking
   const base = makeBase({
     browLower: Array(25).fill(0.2),
-    lipTight: [0.1, 0.2]
+    lidTight: Array(25).fill(0.4),
+    lipTight: [0.1, 0.2],
+    hr: Array(8).fill(72)
   });
   assert.ok(base.browLower);
-  assert.equal(base.browLower.m, 0.2);
+  assert.equal(base.browLower.m, 0.14, 'caps browLower calibration median to 0.14');
   assert.equal(base.browLower.s, 0.03); // FLOOR.browLower is 0.03
-  assert.equal(base.lipTight, undefined);
+  assert.ok(base.lidTight);
+  assert.equal(base.lidTight.m, 0.28, 'caps lidTight calibration median to 0.28');
+  assert.equal(base.lipTight, undefined, 'drops < 25 face samples');
+  assert.ok(base.hr, 'accepts rPPG with >= 8 samples');
+  assert.equal(base.hr.m, 72);
 
   // tensionOf: requires qFace >= MIN_Q (0.3) and at least 4 features
   assert.equal(tensionOf({ browLower: 1, lidTight: 1, lipTight: 1, lipDown: 1 }, 0.2), null);
@@ -308,11 +315,12 @@ test('pulse tile: light coach heuristics, plausibility gating and hrView hold st
   assert.equal(held.age, 6);
   assert.equal(hrView({ v: 72, t: 0 }, 15).state, 'none'); // age 15s > 10s
 
-  // hrvShown plausibility gate (15 - 150 ms, q >= 0.45)
+  // hrvShown plausibility gate (15 - 200 ms, q >= 0.30)
   assert.equal(hrvShown(45, 0.6), 45);
-  assert.equal(hrvShown(180, 0.6), null, 'rejects > 150 ms');
+  assert.equal(hrvShown(220, 0.6), null, 'rejects > 200 ms');
+  assert.equal(hrvShown(180, 0.6), 180, 'accepts 180 ms with q >= 0.30');
   assert.equal(hrvShown(10, 0.6), null, 'rejects < 15 ms');
-  assert.equal(hrvShown(45, 0.3), null, 'rejects low quality q < 0.45');
+  assert.equal(hrvShown(45, 0.2), null, 'rejects low quality q < 0.30');
 });
 
 test('session summary: phaseStats aggregation, directionChecks agreement and renderSummary DOM', async () => {

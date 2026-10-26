@@ -20,9 +20,9 @@ const AU=[['browLower','bL'],['browRaise','bR'],['lidTight','lt'],['eyeWide','ew
 const FEAT=Object.fromEntries([...AU.map(([k])=>[k,'face']),...['expressivity','blink','gaze','headMove'].map(k=>[k,'face']),['hr','rppg'],['hrv','rppg'],['shrug','pose'],['sway','pose'],['fidget','pose']]);
 // Smallest spread a baseline may have. Without it, blendshape scores near zero make ordinary movement look extreme
 // (the old lip feature sat at the +-3 clip in 48% of windows in the first real session).
-const FLOOR={browLower:.03,browRaise:.03,lidTight:.03,eyeWide:.03,lipTight:.03,lipDown:.03,smile:.04,expressivity:.01,blink:2,gaze:.03,headMove:.1,hr:3,hrv:5,shrug:.02,sway:.05,fidget:.1};
+const FLOOR={browLower:.03,browRaise:.012,lidTight:.03,eyeWide:.004,lipTight:.004,lipDown:.002,smile:.04,expressivity:.01,blink:4.5,gaze:.03,headMove:.18,hr:3,hrv:5,shrug:.02,sway:.08,fidget:.1};
 // Facial tension index: weights on baseline z-scores, positive = more tension. Literature-based priors, not fitted or validated.
-const TENSION={browLower:1,lidTight:.8,lipTight:.8,lipDown:.5,browRaise:.3,eyeWide:.2,smile:-.6,expressivity:.2,blink:.3,gaze:.4,headMove:.4};
+const TENSION={browLower:1,lidTight:.8,lipTight:.8,lipDown:.5,browRaise:.3,eyeWide:.2,smile:-.6,expressivity:.2,gaze:.3,headMove:.15};
 // Guna <- cue weights on baseline z-scores. This is the hypothesis from the mapping table; test and refit it.
 const MAP={
  rajas:{hr:.8,browLower:.6,lipTight:.4,gaze:.6,headMove:.5,shrug:.6,sway:.4,fidget:.8,blink:.3},
@@ -39,8 +39,29 @@ const cv=document.createElement('canvas');let cx=null;
 
 // Hook for the existing voice model: setVoice({sattva,rajas,tamas}, quality0to1)
 window.setVoice=(p,q=1)=>{voice={p,q,t:performance.now()}};
-// Any visibility change invalidates the next LOOKBACK_S seconds: timers and frames are throttled in hidden tabs.
-document.addEventListener('visibilitychange',()=>{if(start)hiddenAt=(performance.now()-start)/1e3});
+let bgTimer=null;
+document.addEventListener('visibilitychange',()=>{
+ if(!running)return;
+ if(document.hidden){
+  bgTimer??=setInterval(()=>{
+   const v=$('cam'),t=performance.now();
+   if(v.readyState>=2&&v.currentTime!==lastT){lastT=v.currentTime;frame(v,t)}
+  },66);
+ }else if(bgTimer){clearInterval(bgTimer);bgTimer=null}
+ const recentF=fbuf.filter(o=>o.t>performance.now()-2000).length;
+ if(start&&recentF<8)hiddenAt=(performance.now()-start)/1e3;
+});
+const btnPip=$('btnPip');
+if(btnPip){
+ if('pictureInPictureEnabled' in document){
+  btnPip.onclick=async()=>{
+   try{
+    if(document.pictureInPictureElement)await document.exitPictureInPicture();
+    else await $('cam').requestPictureInPicture();
+   }catch(e){}
+  };
+ }else btnPip.hidden=true;
+}
 $('guna').hidden=!DEMO_GUNA;
 initTheme($('themeBtn'));
 // Tell the launcher this page is open; it quits a few minutes after the last page closes.
@@ -212,16 +233,22 @@ const ROWS={face:[['browLower','Brow lowering'],['browRaise','Brow raise'],['lid
 const phaseNow=()=>document.querySelector('input[name=phase]:checked').value;
 const mmss=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 const presence=()=>{const r=fbuf.slice(-30);return r.length?r.filter(o=>o.ok).length/r.length:0};
-let tensionS=null;
+let tensionS=null,zSmooth={};
 const trend=createTrend($('trend'));
 buildRows('rowsFace',ROWS.face);buildRows('rowsPose',ROWS.pose);RATE.forEach(initRate);
 
+const MIN_CAL_RPPG=8;
 export function makeBase(calObj){
  const b={};
  for(const k in calObj){
-  if(calObj[k]?.length>=MIN_CAL_N){
-   const m=median(calObj[k]);
-   b[k]={m,s:Math.max(1.4826*median(calObj[k].map(v=>Math.abs(v-m))),.1*Math.abs(m),FLOOR[k]??1e-3)};
+  const reqN=(k==='hr'||k==='hrv')?MIN_CAL_RPPG:MIN_CAL_N;
+  if(calObj[k]?.length>=reqN){
+   const rawM=median(calObj[k]);
+   const mad=1.4826*median(calObj[k].map(v=>Math.abs(v-rawM)));
+   let m=rawM;
+   if(k==='browLower')m=Math.min(0.14,m);
+   if(k==='lidTight')m=Math.min(0.28,m);
+   b[k]={m,s:Math.max(mad,.1*Math.abs(m),FLOOR[k]??1e-3)};
   }
  }
  return b;
@@ -277,10 +304,15 @@ function liveTick(){
  fast=raw===null?null:fast===null?raw:fast+ema(dt,TAU_S)*(raw-fast);
  trend.push(el,fast);
  renderState(fast);
- for(const [k] of [...ROWS.face,...ROWS.pose])setRow(k,x[k],z[k]);
+ for(const [k] of [...ROWS.face,...ROWS.pose]){
+  if(z[k]!=null){
+   zSmooth[k]=zSmooth[k]==null?z[k]:zSmooth[k]+ema(dt,1.5)*(z[k]-zSmooth[k]);
+   setRow(k,x[k],zSmooth[k]);
+  }else setRow(k,x[k],null);
+ }
 }
 
-let lastHr=null,calLate={hr:[],hrv:[]},hrLate=false;
+let lastHr=null,lastHrv=null,calLate={hr:[],hrv:[]},hrLate=false;
 
 function show(x,z,q,el,all,ag,tn,af,status){
  $('idxHead').classList.toggle('on',fast!==null||tn!==null);
@@ -292,7 +324,9 @@ function show(x,z,q,el,all,ag,tn,af,status){
   const box=$('pulseBox');if(box)box.dataset.state=view.state;
   tweenNum($('hrNum'),view.v);
   const hrvV=hrvShown(x.hrv,q.rppg);
-  tweenNum($('hrvNum'),hrvV);
+  if(hrvV!=null)lastHrv={v:hrvV,t:el};
+  const hrvView=hrView(lastHrv,el);
+  tweenNum($('hrvNum'),hrvView.v);
   const agoEl=$('hrAgo');
   if(agoEl)agoEl.textContent=view.state==='held'&&view.age!=null?`(${Math.round(view.age)}s ago)`:'';
   const heart=$('hrHeart');
@@ -343,6 +377,20 @@ function setup(el,x,q,tip=null){ // setup stage: ring, wording and live checks w
  row('cStill',use.face&&still!==null,still,still===1?'Holding still':'Try to hold still');
 }
 
+let guidedTargetS=90,guidedPrompted=false;
+
+function chime(){
+ try{
+  const AC=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AC)return;
+  const ac=new AC(),now=ac.currentTime,o1=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
+  o1.frequency.value=523.25;o2.frequency.value=659.25;
+  g.gain.setValueAtTime(0.08,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.8);
+  o1.connect(g);o2.connect(g);g.connect(ac.destination);
+  o1.start(now);o2.start(now);o1.stop(now+0.8);o2.stop(now+0.8);
+  setTimeout(()=>ac.close(),1000);
+ }catch(e){}
+}
+
 function tick(){
  const el=(performance.now()-start)/1e3,{x,q}=feats(),pre=el<CAL_END,phase=el<SETTLE_S?'settle':pre?'calibration':phaseNow();
  const ws=Math.max(0,el-WIN_S),fs0=el-LOOKBACK_S,inside=!pre&&fs0>=phaseStart&&fs0>hiddenAt; // features look back up to LOOKBACK_S
@@ -366,15 +414,16 @@ function tick(){
    if(x.hr!=null&&(q.rppg??0)>MIN_Q){
     (calLate.hr??=[]).push(x.hr);
     if(x.hrv!=null)(calLate.hrv??=[]).push(x.hrv);
-    if(calLate.hr.length>=MIN_CAL_N){
+    if(calLate.hr.length>=MIN_CAL_RPPG){
      Object.assign(base,makeBase(calLate));
      hrLate=true;
      toast('Pulse baseline set from Baseline phase.');
     }
    }
   }
-  const miss=Object.keys(FEAT).filter(k=>({face:use.face,rppg:use.pulse,pose:use.pose})[FEAT[k]]&&!base[k]);
-  $('st').textContent=miss.length?`No baseline for ${miss.join(', ')}. Check lighting and framing, then start a new session.`:'';
+  const CORE_FACE=['browLower','lidTight','smile','expressivity'];
+  const miss=CORE_FACE.filter(k=>use.face&&!base[k]);
+  $('st').textContent=miss.length?`Face calibration incomplete (${miss.join(', ')}). Check lighting and framing, then restart setup.`:'';
   for(const k in x)if(base[k])z[k]=Math.max(-3,Math.min(3,(x[k]-base[k].m)/base[k].s));
   // Facial tension index: needs a usable face signal and at least 4 features with a baseline; smoothed so it does not flicker.
   const raw=tensionOf(z,q.face);
@@ -387,7 +436,29 @@ function tick(){
    if(vo&&vis)ag=1-.5*G.reduce((s,g)=>s+Math.abs(vo.p[g]-vis[g]),0);
   }
  }
- if(!pre)$('phaseTime').textContent=mmss(Math.max(0,el-phaseStart));
+ if(!pre){
+  $('phaseTime').textContent=mmss(Math.max(0,el-phaseStart));
+  const uGuided=$('uGuided');
+  const isGuided=uGuided?uGuided.checked:false;
+  if(isGuided){
+   guidedTargetS=Number($('guidedSecs')?.value||90);
+   const phaseElapsed=Math.max(0,el-phaseStart);
+   const pct=Math.min(100,(phaseElapsed/guidedTargetS)*100);
+   const gBar=$('guidedBar'),gFill=$('guidedFill');
+   if(gBar)gBar.hidden=false;
+   if(gFill)gFill.style.width=`${pct}%`;
+   if(phaseElapsed>=guidedTargetS&&!guidedPrompted){
+    guidedPrompted=true;
+    chime();
+    toast(`Time to check in for ${PHASE[phaseNow()]}! Complete your rating.`);
+    $('reportMsg').textContent=`${PHASE[phaseNow()]} phase complete (${guidedTargetS}s). Record your rating below.`;
+    drawer(true);
+   }
+  }else{
+   const gBar=$('guidedBar');
+   if(gBar)gBar.hidden=true;
+  }
+ }
  const f2s=fbuf.filter(o=>o.t>performance.now()-2000).length;
  const fpsEl=$('fpsNum');if(fpsEl)fpsEl.textContent=Math.round(f2s/2)||'–';
  show(x,z,q,el,all,ag,tn,af,pre?'setting up':inside?'clean window':fs0<phaseStart?'wait: phase changed':'wait: tab was hidden');
@@ -407,6 +478,7 @@ $('phaseSeg').addEventListener('change',()=>{
  phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
  $('reportPhase').textContent=PHASE[phaseNow()];
  trend.mark(phaseStart,phaseNow());
+ guidedPrompted=false;
  toast(`Phase: ${PHASE[phaseNow()]}. Check in at its end, before you switch.`);
 });
 const closeDrawer=()=>drawer(false);
@@ -424,6 +496,28 @@ $('saveReport').onclick=()=>{
  trend.check(tt,st);
  RATE.forEach(resetRate);closeDrawer();
  toast(`Check-in saved for ${PHASE[phase]}. It labels the last ${LABEL_SPAN_S} s of this phase.`);
+ const isGuided=$('uGuided')?.checked;
+ if(isGuided){
+  const cur=phaseNow();
+  if(cur==='baseline'){
+   document.querySelector('input[name=phase][value=stressor]').checked=true;
+   phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
+   $('reportPhase').textContent='Stressor';
+   trend.mark(phaseStart,'stressor');
+   guidedPrompted=false;
+   toast('Guided protocol: Starting Stressor phase (math/cognitive challenge).');
+  }else if(cur==='stressor'){
+   document.querySelector('input[name=phase][value=recovery]').checked=true;
+   phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
+   $('reportPhase').textContent='Recovery';
+   trend.mark(phaseStart,'recovery');
+   guidedPrompted=false;
+   toast('Guided protocol: Starting Recovery phase (music/rest).');
+  }else if(cur==='recovery'){
+   toast('Guided study complete! Opening session summary.');
+   setTimeout(()=>showSummary(),800);
+  }
+ }
 };
 
 const chk=()=>{$('go').disabled=!($('ok').checked&&($('uFace').checked||$('uPulse').checked||$('uPose').checked||$('uVoice').checked))};
@@ -433,22 +527,35 @@ if(typeof window!=='undefined'&&window.addEventListener)window.addEventListener(
 chk();
 
 $('go').onclick=async()=>{
+ const goBtn=$('go');
+ if(goBtn.disabled)return;
  use={face:$('uFace').checked,pulse:$('uPulse').checked,pose:$('uPose').checked,voice:$('uVoice').checked};
  participantId=$('participantId').value.trim();sessionId=$('sessionId').value.trim();
  if(!participantId||!sessionId){$('msg').textContent='Enter a participant ID and a session ID.';return}
+ goBtn.disabled=true;
+ goBtn.textContent='Starting...';
  $('msg').textContent='Starting the camera and loading models. The very first run downloads two small model files, which can take a minute.';
+ let userAudioCtx=null;
+ try{
+  const AC=globalThis.AudioContext||globalThis.webkitAudioContext;
+  if(AC){userAudioCtx=new AC();if(userAudioCtx.state==='suspended')userAudioCtx.resume();}
+ }catch(e){}
  try{
   stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,frameRate:30},audio:use.voice});
   const v=$('cam');v.srcObject=stream;await v.play();
   await init();
  }catch(e){
   $('msg').textContent='Could not start: '+e.message+'. Allow camera access in the browser. If this is the first run, connect to the internet once so the models can download.';
+  goBtn.disabled=false;
+  goBtn.textContent='Start setup';
   if(stream)stream.getTracks().forEach(t=>t.stop());return;
  }
+ if(timer)clearInterval(timer);
+ if(liveTimer)clearInterval(liveTimer);
  fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;
  calFast={};baseFast=null;fast=null;lastLive=0;zoneIdx=null;afTrailPts=[];
- lastHr=null;calLate={hr:[],hrv:[]};hrLate=false;
- if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q)):null;
+ lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};
+ if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q),userAudioCtx):null;
  reports=[];tensionS=null;phaseStart=CAL_END;
  renderState(null);
  const trail=$('afTrail');if(trail)trail.innerHTML='';
@@ -459,6 +566,7 @@ $('go').onclick=async()=>{
  document.querySelector('input[name=phase][value=baseline]').checked=true;$('reportPhase').textContent='Baseline';
  $('who').textContent=`${participantId} (${sessionId})`;$('cam').classList.add('on');
  stage('setup');
+ goBtn.textContent='Start setup';
  start=performance.now();running=true;loop();timer=setInterval(tick,1000);liveTimer=setInterval(liveTick,LIVE_MS);
 };
 
@@ -467,6 +575,7 @@ $('stop').onclick=()=>{
  const mcv=$('meshCv');mcv?.getContext?.('2d')?.clearRect(0,0,mcv.width||640,mcv.height||480);
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
+ chk();
  if(reports.length>0)showSummary();
 };
 

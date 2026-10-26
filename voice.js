@@ -1,6 +1,6 @@
 // voice.js: on-device WebAudio acoustic arousal and Guna prior scorer for the window.setVoice hook.
 // Audio is analysed in memory only and is never recorded, stored or uploaded.
-export const MIN_RMS = 0.012;
+export const MIN_RMS = 0.004;
 
 export function acousticFeatures(timeBuf, freqBins, sampleRate = 48000) {
   const n = timeBuf.length;
@@ -38,10 +38,10 @@ export function scoreVoice({ rms = 0, centroid = 0, zcr = 0 } = {}) {
   return { p: { sattva: ex[0] / Z, rajas: ex[1] / Z, tamas: ex[2] / Z }, q, arousal };
 }
 
-export function createVoiceMonitor(stream, onVoice) {
+export function createVoiceMonitor(stream, onVoice, existingCtx = null) {
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AC || !stream?.getAudioTracks?.().length) return { stop() {} };
-  const ctx = new AC();
+  const ctx = existingCtx || new AC();
   if (ctx.state === 'suspended') ctx.resume?.().catch?.(() => {});
   const src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
   an.fftSize = 1024; an.smoothingTimeConstant = 0.5;
