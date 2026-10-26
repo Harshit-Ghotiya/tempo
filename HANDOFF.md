@@ -28,8 +28,8 @@ Changed
 5. `launcher/`:
    - Synced assets to `launcher/site/` and rebuilt `launcher/tempo-launcher`.
 
-Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass); `./launcher/tempo-launcher -h`.
-Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass); `./launcher/tempo-launcher -h`; live session validation with `P001_S04` (443 rows, 7m33s, 100% facial feature coverage, perfect rank agreement with self-reported stress: Baseline -0.15 [2/10] -> Stressor +0.95 [7/10] -> Recovery -0.22 [2/10], both direction checks passed).
+Not checked: real webcam runs across other hardware/participants; live speaker audio; packaged Windows app runs.
 
 ## v0.7.6 update (2026-10-27): guided study protocol, background execution, calibration bounds, signal tuning, and UI stabilization (feat/guided-study-protocol)
 
