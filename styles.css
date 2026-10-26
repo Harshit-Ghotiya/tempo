@@ -2,14 +2,14 @@
 :root {
   color-scheme: light dark;
   /* Raw palette: light / dark */
-  --bg-l: #F5F5F7;  --bg-d: #000000;
+  --bg-l: #F2F2F7;  --bg-d: #000000;
   --card-l: #FFFFFF; --card-d: #1C1C1E;
-  --fill-l: #E9E9EE; --fill-d: #2C2C2E;
+  --fill-l: #E5E5EA; --fill-d: #2C2C2E;
   --line-l: rgba(0,0,0,.08); --line-d: rgba(255,255,255,.10);
   --text-l: #1D1D1F; --text-d: #F5F5F7;
-  --text2-l: #6E6E73; --text2-d: #98989D;
+  --text2-l: #6C6C70; --text2-d: #8E8E93;
   --text3-l: #AEAEB2; --text3-d: #636366;
-  --accent-l: #0071E3; --accent-d: #2997FF;
+  --accent-l: #007AFF; --accent-d: #0A84FF;
   --green-l: #34C759; --green-d: #30D158;
   --teal-l: #30B0C7;  --teal-d: #40C8E0;
   --yellow-l: #FFCC00; --yellow-d: #FFD60A;
@@ -404,7 +404,10 @@ input[type=text]:focus {
   height: 100%;
   background: var(--accent);
   border-radius: 3px;
-  transition: width 0.3s linear;
+  transition: width 0.3s linear, background-color 0.3s var(--ease);
+}
+.guided-bar[data-done="1"] .guided-fill {
+  background: var(--green);
 }
 .st-banner:empty {
   display: none !important;
@@ -467,13 +470,29 @@ input[type=text]:focus {
   outline-offset: 3px;
 }
 .btn-full { width: 100%; height: 48px; }
+.btn.nudge {
+  background: var(--accent);
+  color: #ffffff;
+  animation: nudge-pulse 1.8s infinite ease-in-out;
+}
+@keyframes nudge-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 9px color-mix(in srgb, var(--accent) 0%, transparent);
+    transform: scale(1.03);
+  }
+}
 
 /* Stage visibility */
 #run { display: none; grid-template-columns: 340px minmax(0, 1fr); gap: 24px; align-items: start; }
 body:not([data-stage=consent]) #run { display: grid; }
 body:not([data-stage=consent]) #consent { display: none; }
 #setup, #live { display: none; }
-body[data-stage=setup] #setup, body[data-stage=live] #live { display: block; animation: fade .4s ease both; }
+body[data-stage=setup] #setup { display: block; animation: fade .4s ease both; }
+body[data-stage=live] #live { display: grid; animation: fade .4s ease both; }
 @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Camera Column */
@@ -673,13 +692,54 @@ body[data-stage=live] .cam-badge-live { display: inline-flex; }
 }
 .card {
   background: var(--card);
-  border-radius: 22px;
-  padding: 22px;
+  border-radius: 20px;
+  padding: 20px;
   box-shadow: var(--card-shadow);
+  border: 1px solid var(--line);
 }
 .col-12 { grid-column: 1 / -1; }
 .col-7 { grid-column: span 7; }
 .col-5 { grid-column: span 5; }
+
+/* Section Header (Apple Health-style) */
+.section-title {
+  font: 700 20px/1.2 var(--font-display);
+  letter-spacing: -.02em;
+  color: var(--text);
+  margin: 12px 0 -4px;
+  padding-left: 2px;
+}
+
+/* Card Header with Icon (Apple Health-style) */
+.htitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 13px/18px var(--font);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--card-accent, var(--text-2));
+  margin-bottom: 2px;
+}
+.htitle svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+/* Tint Variables for Apple Health Color Accentuation */
+.tint-indigo { --card-accent: var(--indigo); }
+.tint-pink { --card-accent: var(--pink); }
+.tint-teal { --card-accent: var(--teal); }
+.tint-purple { --card-accent: #AF52DE; }
+.tint-orange { --card-accent: var(--orange); }
+.tint-green { --card-accent: var(--green); }
+.rows { margin-top: 14px; }
 
 /* Control Bar */
 .ctrl-bar {
@@ -869,11 +929,20 @@ body[data-stage=live] .cam-badge-live { display: inline-flex; }
 }
 .tile-card {
   background: var(--card);
-  border-radius: 20px;
-  padding: 20px;
+  border-radius: 18px;
+  padding: 18px 20px;
   box-shadow: var(--card-shadow);
+  border: 1px solid var(--line);
   display: flex;
   flex-direction: column;
+}
+.tile-card.tint-pink { --tile-accent: var(--pink); }
+.tile-card.tint-teal { --tile-accent: var(--teal); }
+.tile-card.tint-purple { --tile-accent: #AF52DE; }
+.tile-card[class*="tint-"] .eyebrow { color: var(--tile-accent); }
+.tile-card[class*="tint-"] .tile-icon {
+  background: color-mix(in srgb, var(--tile-accent) 14%, transparent);
+  color: var(--tile-accent);
 }
 .tile-head {
   display: flex;

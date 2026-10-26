@@ -254,7 +254,6 @@ test('fast live display: zoneIdxOf hysteresis, makeBase, tensionOf and tweenNum 
   assert.equal(zoneIdxOf(null, 1), null);
 
   // makeBase: drops features with < 25 calibration samples, computes median and floor
-  // caps browLower at 0.14 and lidTight at 0.28 to prevent squint/furrow masking
   const base = makeBase({
     browLower: Array(25).fill(0.2),
     lidTight: Array(25).fill(0.4),
@@ -262,10 +261,10 @@ test('fast live display: zoneIdxOf hysteresis, makeBase, tensionOf and tweenNum 
     hr: Array(8).fill(72)
   });
   assert.ok(base.browLower);
-  assert.equal(base.browLower.m, 0.14, 'caps browLower calibration median to 0.14');
+  assert.equal(base.browLower.m, 0.2, 'preserves browLower calibration median');
   assert.equal(base.browLower.s, 0.03); // FLOOR.browLower is 0.03
   assert.ok(base.lidTight);
-  assert.equal(base.lidTight.m, 0.28, 'caps lidTight calibration median to 0.28');
+  assert.equal(base.lidTight.m, 0.4, 'preserves lidTight calibration median');
   assert.equal(base.lipTight, undefined, 'drops < 25 face samples');
   assert.ok(base.hr, 'accepts rPPG with >= 8 samples');
   assert.equal(base.hr.m, 72);

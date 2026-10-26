@@ -1,10 +1,35 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.6 (guided study protocol, background execution, calibration bounds, signal tuning, and UI stabilization)  
+**Project version:** v0.7.7 (phase reminder mode, background worker clock, empirical tension weights, and Apple Health UI styling)  
 **Date:** 2026-10-27  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
+
+## v0.7.7 update (2026-10-27): phase reminder mode, background worker clock, empirical tension weights, and Apple Health UI styling (feat/reminder-tension-health-ui)
+
+Changed
+1. `app.js`:
+   - Tension weights refit: updated `TENSION = {browLower:.5, lidTight:1, lipTight:.8, lipDown:.3, browRaise:.2, eyeWide:.2, smile:-.4, expressivity:.1, blink:-.4, gaze:.2, headMove:.1}`. Eye tightening (`lidTight`) leads because it rose reliably across all three real stressor tests (`S01`, `S02`, `S03`); `browLower` weight is halved because downward gaze during mobile scrolling artificially lowered brows; `blink` weight is inverted to `-0.4` because cognitive load suppresses blink rate below baseline. Evaluated on 3 real sessions ($r = 1.0$ rank agreement with self-reported stress on `S03`).
+   - Calibration cap removal: removed the artificial `0.14` cap on `browLower` median in `makeBase()` that had inflated baseline z-scores to $+2.34$ in `S03`.
+   - Web Worker session clock: replaced main-thread `setInterval`/`rAF` polling with `createClock()` using an inline Web Worker. This prevents Safari and Chromium background tab throttling from pausing the stress counter when switching to Matiks or music.
+   - Non-disruptive phase reminders: guided protocol is now a reminder rather than an auto-advance force. When the timer finishes, it plays a two-tone chime, displays a reminder toast, pulses the Check in button (`.nudge`), and updates the browser tab title (`⏰ Check in · Tempo`). The user switches phases when they are ready.
+2. `index.html`:
+   - Updated copy to "Phase reminders" (`#uGuided`).
+   - Added Apple Health section headers (`.section-title`: "Highlights", "Changes from your baseline") and card header icons (`.htitle`).
+   - Added Health tint classes (`.tint-indigo`, `.tint-pink`, `.tint-teal`, `.tint-purple`, `.tint-orange`, `.tint-green`).
+   - Bumped asset query strings to `?v=0.7.7`.
+3. `styles.css`:
+   - Apple Health palette alignment: `--bg-l: #F2F2F7;`, `--accent-l: #007AFF;`, `--text2-l: #6C6C70;`, `--fill-l: #E5E5EA;`.
+   - Card spacing and styling: added `.section-title`, `.htitle`, `.tint-*` card accent rules, `.rows` spacing, `.guided-bar[data-done="1"]` completion fill, and `.btn.nudge` pulse animation.
+   - Live grid visibility fix: changed `body[data-stage=live] #live` to `display: grid;`.
+4. `tests/ui.test.mjs`:
+   - Updated `makeBase` test assertion to verify natural calibration median preservation.
+5. `launcher/`:
+   - Synced assets to `launcher/site/` and rebuilt `launcher/tempo-launcher`.
+
+Checked: `node --check app.js && node --check ui.js && node --check hr.js && node --check affect.js && node --check voice.js && node --check chart.js && node --check summary.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (31 tests pass); `./launcher/tempo-launcher -h`.
+Not checked: real webcam session with camera; live speaker audio; packaged Mac/Windows app runs.
 
 ## v0.7.6 update (2026-10-27): guided study protocol, background execution, calibration bounds, signal tuning, and UI stabilization (feat/guided-study-protocol)
 

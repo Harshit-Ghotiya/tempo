@@ -8,7 +8,7 @@
 <script>try{const s=localStorage.getItem('color-scheme');document.querySelector('meta[name="color-scheme"]').content=s??'light dark';if(s)document.documentElement.dataset.theme=s}catch(e){}</script>
 <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="styles.css?v=0.7.5">
+<link rel="stylesheet" href="styles.css?v=0.7.7">
 </head>
 <body data-stage="consent">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -92,7 +92,7 @@
   <div class="guided-opt">
    <label class="guided-lbl">
     <input type="checkbox" id="uGuided" checked switch role="switch">
-    <span><b>Guided study protocol</b>: 3 × <select id="guidedSecs"><option value="60">60s</option><option value="90" selected>90s</option><option value="120">120s</option></select> auto-timed phases</span>
+    <span><b>Phase reminders</b>: chime after <select id="guidedSecs"><option value="60">60s</option><option value="90" selected>90s</option><option value="120">120s</option></select> per phase. You switch phases yourself.</span>
    </label>
   </div>
   <div class="act">
@@ -166,10 +166,10 @@
    </div>
    <div class="st-banner col-12" id="st" role="status"></div>
 
-   <div class="card hero-card col-12">
+   <div class="card hero-card col-12 tint-indigo">
     <div class="hero-head">
      <div>
-      <p class="eyebrow">Facial tension vs baseline</p>
+      <p class="htitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Facial tension vs baseline</p>
       <div class="stateword" id="stateWord">Not enough signal yet</div>
      </div>
      <div class="statenum-wrap">
@@ -196,8 +196,9 @@
     </div>
    </div>
 
+   <h2 class="section-title col-12">Highlights</h2>
    <div class="tiles-grid">
-    <div class="tile-card" id="pulseBox" hidden>
+    <div class="tile-card tint-pink" id="pulseBox" hidden>
      <div class="tile-head">
       <p class="eyebrow">Pulse &amp; HRV</p>
       <div class="tile-icon red" id="hrHeart"><svg viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></div>
@@ -208,7 +209,7 @@
      <p class="pulse-tip small" id="lightTip" hidden></p>
     </div>
 
-    <div class="tile-card" id="affectCard">
+    <div class="tile-card tint-teal" id="affectCard">
      <div class="tile-head">
       <p class="eyebrow">Facial Affect</p>
       <div class="tile-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
@@ -231,7 +232,7 @@
      <div class="tile-foot">FACS blendshape projection, unvalidated</div>
     </div>
 
-    <div class="tile-card" id="guna" hidden>
+    <div class="tile-card tint-purple" id="guna" hidden>
      <div class="tile-head">
       <p class="eyebrow">Triguna Balance</p>
       <div class="tile-icon mint"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 0 0 20 5 5 0 0 0 0-10 5 5 0 0 1 0-10z"/><circle cx="12" cy="7" r="1.5"/><circle cx="12" cy="17" r="1.5"/></svg></div>
@@ -257,16 +258,17 @@
     </div>
    </div>
 
-   <div class="card col-7">
-    <h3>Expression</h3>
-    <p class="subhead">Change from your baseline</p>
-    <div id="rowsFace" style="margin-top:12px"></div>
+   <h2 class="section-title col-12">Changes from your baseline</h2>
+   <div class="card col-7 tint-orange">
+    <h3 class="htitle"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 15h8M9 9h.01M15 9h.01"/></svg>Expression</h3>
+    <p class="subhead">Face, compared with your calibration</p>
+    <div id="rowsFace" class="rows"></div>
    </div>
 
-   <div class="card col-5">
-    <h3>Movement</h3>
-    <p class="subhead">Change from your baseline</p>
-    <div id="rowsPose" style="margin-top:12px"></div>
+   <div class="card col-5 tint-green">
+    <h3 class="htitle"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><path d="M12 7v6m0 0-3 7m3-7 3 7M7 10h10"/></svg>Movement</h3>
+    <p class="subhead">Head and body, compared with your calibration</p>
+    <div id="rowsPose" class="rows"></div>
    </div>
 
    <details class="col-12">
@@ -349,6 +351,6 @@
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=0.7.5"></script>
+<script type="module" src="app.js?v=0.7.7"></script>
 </body>
 </html>

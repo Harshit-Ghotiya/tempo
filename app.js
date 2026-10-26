@@ -1,10 +1,10 @@
-// Tempo v0.7.5: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
-import {createTracker,isSkin} from './hr.js?v=0.7.5';
-import {initAffect,evalAffect} from './affect.js?v=0.7.5';
-import {createVoiceMonitor} from './voice.js?v=0.7.5';
-import {createTrend,ema} from './chart.js?v=0.7.5';
-import {phaseStats,directionChecks} from './summary.js?v=0.7.5';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.5';
+// Tempo v0.7.7: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
+import {createTracker,isSkin} from './hr.js?v=0.7.7';
+import {initAffect,evalAffect} from './affect.js?v=0.7.7';
+import {createVoiceMonitor} from './voice.js?v=0.7.7';
+import {createTrend,ema} from './chart.js?v=0.7.7';
+import {phaseStats,directionChecks} from './summary.js?v=0.7.7';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.7';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -22,7 +22,10 @@ const FEAT=Object.fromEntries([...AU.map(([k])=>[k,'face']),...['expressivity','
 // (the old lip feature sat at the +-3 clip in 48% of windows in the first real session).
 const FLOOR={browLower:.03,browRaise:.012,lidTight:.03,eyeWide:.004,lipTight:.004,lipDown:.002,smile:.04,expressivity:.01,blink:4.5,gaze:.03,headMove:.18,hr:3,hrv:5,shrug:.02,sway:.08,fidget:.1};
 // Facial tension index: weights on baseline z-scores, positive = more tension. Literature-based priors, not fitted or validated.
-const TENSION={browLower:1,lidTight:.8,lipTight:.8,lipDown:.5,browRaise:.3,eyeWide:.2,smile:-.6,expressivity:.2,gaze:.3,headMove:.15};
+// v0.7.7: eye tightening leads (rose in the stressor in all three P001 sessions); brow lowering is halved because it moves
+// with head pitch and screen position (Reddit scrolling read higher than mental maths in S03); blink is negative because
+// cognitive load suppresses blinking (S01-2, S02, S03 stressor blink was below baseline). Checked on 3 sessions of one person only.
+const TENSION={browLower:.5,lidTight:1,lipTight:.8,lipDown:.3,browRaise:.2,eyeWide:.2,smile:-.4,expressivity:.1,blink:-.4,gaze:.2,headMove:.1};
 // Guna <- cue weights on baseline z-scores. This is the hypothesis from the mapping table; test and refit it.
 const MAP={
  rajas:{hr:.8,browLower:.6,lipTight:.4,gaze:.6,headMove:.5,shrug:.6,sway:.4,fidget:.8,blink:.3},
@@ -32,25 +35,41 @@ const MAP={
 const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN,
  sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(v=>(v-m)**2)))},fin=a=>a.filter(Number.isFinite);
 const median=a=>{const s=[...a].sort((p,q)=>p-q),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
-let use,face,pose,tracker,stream,vmon=null,running=false,start,base,timer,lastT=-1,fc=0,pw=null,voice=null,trained=null;
+let use,face,pose,tracker,stream,vmon=null,running=false,start,base,lastT=-1,fc=0,pw=null,voice=null,trained=null;
 let fbuf=[],pbuf=[],rgb=[],cal={},log=[];
 let participantId='',sessionId='',reports=[],phaseStart=CAL_END,hiddenAt=-1;
 const cv=document.createElement('canvas');let cx=null;
 
 // Hook for the existing voice model: setVoice({sattva,rajas,tamas}, quality0to1)
 window.setVoice=(p,q=1)=>{voice={p,q,t:performance.now()}};
-let bgTimer=null;
-document.addEventListener('visibilitychange',()=>{
+// Session clock. Browsers throttle main-thread timers and stop requestAnimationFrame in background tabs, which froze the
+// tension counter when the participant switched to the stressor tab. A tiny Worker keeps ticking in the background
+// (worker timers are not throttled the same way), so frames, the 1 Hz tick and the live display keep running.
+// Falls back to setInterval if Workers are unavailable.
+const CLOCK_MS=50,BG_FRAME_MS=66;
+function createClock(onBeat){
+ let w=null,id=null;
+ try{
+  const url=URL.createObjectURL(new Blob(['let i=null;onmessage=e=>{clearInterval(i);if(e.data>0)i=setInterval(()=>postMessage(0),e.data)}'],{type:'text/javascript'}));
+  w=new Worker(url);URL.revokeObjectURL(url);w.onmessage=onBeat;
+ }catch(e){w=null}
+ return{
+  start(){if(w)w.postMessage(CLOCK_MS);else id??=setInterval(onBeat,CLOCK_MS)},
+  stop(){if(w)w.postMessage(0);if(id){clearInterval(id);id=null}}
+ };
+}
+let lastTickAt=0,lastLiveAt=0,lastBgFrame=0;
+const clock=createClock(()=>{
  if(!running)return;
- if(document.hidden){
-  bgTimer??=setInterval(()=>{
-   const v=$('cam'),t=performance.now();
-   if(v.readyState>=2&&v.currentTime!==lastT){lastT=v.currentTime;frame(v,t)}
-  },66);
- }else if(bgTimer){clearInterval(bgTimer);bgTimer=null}
- const recentF=fbuf.filter(o=>o.t>performance.now()-2000).length;
- if(start&&recentF<8)hiddenAt=(performance.now()-start)/1e3;
+ const now=performance.now();
+ if(document.hidden&&now-lastBgFrame>=BG_FRAME_MS){ // rAF does not run in hidden tabs: pump frames here instead
+  lastBgFrame=now;const v=$('cam');
+  if(v.readyState>=2&&v.currentTime!==lastT){lastT=v.currentTime;frame(v,now)}
+ }
+ if(now-lastLiveAt>=LIVE_MS){lastLiveAt=now;liveTick()}
+ if(now-lastTickAt>=1000){lastTickAt=now;tick()}
 });
+document.addEventListener('visibilitychange',()=>{if(running&&!document.hidden)trend.render?.((performance.now()-start)/1e3,.5)});
 const btnPip=$('btnPip');
 if(btnPip){
  if('pictureInPictureEnabled' in document){
@@ -243,12 +262,9 @@ export function makeBase(calObj){
  for(const k in calObj){
   const reqN=(k==='hr'||k==='hrv')?MIN_CAL_RPPG:MIN_CAL_N;
   if(calObj[k]?.length>=reqN){
-   const rawM=median(calObj[k]);
-   const mad=1.4826*median(calObj[k].map(v=>Math.abs(v-rawM)));
-   let m=rawM;
-   if(k==='browLower')m=Math.min(0.14,m);
-   if(k==='lidTight')m=Math.min(0.28,m);
-   b[k]={m,s:Math.max(mad,.1*Math.abs(m),FLOOR[k]??1e-3)};
+   // No caps on the median: the v0.7.6 browLower cap (0.14) put a relaxed S03 baseline at z=+2.3.
+   const m=median(calObj[k]);
+   b[k]={m,s:Math.max(1.4826*median(calObj[k].map(v=>Math.abs(v-m))),.1*Math.abs(m),FLOOR[k]??1e-3)};
   }
  }
  return b;
@@ -272,7 +288,7 @@ export function zoneIdxOf(v,prev,margin=0.1){
  return Math.abs(v-EDGES[Math.min(z,prev)])<margin?prev:z;
 }
 
-let liveTimer=null,lastLive=0,calFast={},baseFast=null,fast=null,zoneIdx=null,afTrailPts=[];
+let lastLive=0,calFast={},baseFast=null,fast=null,zoneIdx=null,afTrailPts=[];
 
 function renderState(v){
  zoneIdx=zoneIdxOf(v,zoneIdx);
@@ -378,6 +394,13 @@ function setup(el,x,q,tip=null){ // setup stage: ring, wording and live checks w
 }
 
 let guidedTargetS=90,guidedPrompted=false;
+const MIN_FPS=5,NEXT_STEP={baseline:'switch to Stressor and start your task',stressor:'switch to Recovery and start your music',recovery:'stop the camera and export'};
+// Reminder state: the Check in button pulses and the tab title flags it so it is visible from another tab.
+const BASE_TITLE=document.title;
+function nudge(on){
+ $('openReport')?.classList.toggle('nudge',!!on);
+ document.title=on?'⏰ Check in · '+BASE_TITLE:BASE_TITLE;
+}
 
 function chime(){
  try{
@@ -393,6 +416,10 @@ function chime(){
 
 function tick(){
  const el=(performance.now()-start)/1e3,{x,q}=feats(),pre=el<CAL_END,phase=el<SETTLE_S?'settle':pre?'calibration':phaseNow();
+ // Windows are only clean if frames kept arriving: below MIN_FPS (for example a throttled background tab) blink and
+ // movement features are unreliable, so the next LOOKBACK_S seconds are flagged as transition.
+ const f2s=fbuf.filter(o=>o.t>performance.now()-2000).length,fps=f2s/2;
+ if(!pre&&fps<MIN_FPS)hiddenAt=el;
  const ws=Math.max(0,el-WIN_S),fs0=el-LOOKBACK_S,inside=!pre&&fs0>=phaseStart&&fs0>hiddenAt; // features look back up to LOOKBACK_S
  let z={},ps={},all=null,ag=null,tn=null,af=null,light=null,tip=null;
  if(use.pulse){
@@ -438,35 +465,32 @@ function tick(){
  }
  if(!pre){
   $('phaseTime').textContent=mmss(Math.max(0,el-phaseStart));
-  const uGuided=$('uGuided');
-  const isGuided=uGuided?uGuided.checked:false;
+  // Guided protocol is a reminder only: it never opens the drawer or changes phase, so the participant decides
+  // when to switch to the stressor or the music.
+  const isGuided=!!$('uGuided')?.checked,gBar=$('guidedBar');
+  if(gBar)gBar.hidden=!isGuided;
   if(isGuided){
    guidedTargetS=Number($('guidedSecs')?.value||90);
-   const phaseElapsed=Math.max(0,el-phaseStart);
-   const pct=Math.min(100,(phaseElapsed/guidedTargetS)*100);
-   const gBar=$('guidedBar'),gFill=$('guidedFill');
-   if(gBar)gBar.hidden=false;
-   if(gFill)gFill.style.width=`${pct}%`;
-   if(phaseElapsed>=guidedTargetS&&!guidedPrompted){
+   const phaseElapsed=Math.max(0,el-phaseStart),done=phaseElapsed>=guidedTargetS;
+   const gFill=$('guidedFill');
+   if(gFill)gFill.style.width=`${Math.min(100,(phaseElapsed/guidedTargetS)*100)}%`;
+   if(gBar)gBar.dataset.done=done?'1':'0';
+   if(done&&!guidedPrompted){
     guidedPrompted=true;
-    chime();
-    toast(`Time to check in for ${PHASE[phaseNow()]}! Complete your rating.`);
-    $('reportMsg').textContent=`${PHASE[phaseNow()]} phase complete (${guidedTargetS}s). Record your rating below.`;
-    drawer(true);
+    chime();nudge(true);
+    const next=NEXT_STEP[phaseNow()];
+    toast(`${guidedTargetS} s of ${PHASE[phaseNow()]} done. Check in, then ${next} when you are ready.`,8000);
    }
-  }else{
-   const gBar=$('guidedBar');
-   if(gBar)gBar.hidden=true;
   }
  }
- const f2s=fbuf.filter(o=>o.t>performance.now()-2000).length;
- const fpsEl=$('fpsNum');if(fpsEl)fpsEl.textContent=Math.round(f2s/2)||'–';
- show(x,z,q,el,all,ag,tn,af,pre?'setting up':inside?'clean window':fs0<phaseStart?'wait: phase changed':'wait: tab was hidden');
+ const fpsEl=$('fpsNum');if(fpsEl)fpsEl.textContent=Math.round(fps)||'–';
+ show(x,z,q,el,all,ag,tn,af,pre?'setting up':inside?'clean window':fs0<phaseStart?'wait: phase changed':fs0<=hiddenAt?'wait: low frame rate':'wait');
  log.push({
   participant_id:participantId,session_id:sessionId,t:+el.toFixed(1),
   window_start_s:+ws.toFixed(1),window_end_s:+el.toFixed(1),feature_start_s:+Math.max(0,fs0).toFixed(1),phase,phase_start_s:+phaseStart.toFixed(1),
   transition:!pre&&!inside,tension_idx:tn??'',tension_fast:fast==null?'':+fast.toFixed(3),valence:af?+af.valence.toFixed(3):'',arousal:af?+af.arousal.toFixed(3):'',
   skin_luma:light?+light.luma.toFixed(1):'',skin_rg:light?+light.rg.toFixed(2):'',hr_baseline_late:hrLate,
+  fps:+fps.toFixed(1),tab_hidden:document.hidden,
   ...x,...Object.fromEntries(Object.entries(z).map(([k,v])=>['z_'+k,v])),
   ...(all?{p_sattva:all.sattva,p_rajas:all.rajas,p_tamas:all.tamas}:{}),
   face_quality:q.face??'',rppg_quality:q.rppg??'',pose_quality:q.pose??'',agree:ag
@@ -478,7 +502,7 @@ $('phaseSeg').addEventListener('change',()=>{
  phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
  $('reportPhase').textContent=PHASE[phaseNow()];
  trend.mark(phaseStart,phaseNow());
- guidedPrompted=false;
+ guidedPrompted=false;nudge(false);
  toast(`Phase: ${PHASE[phaseNow()]}. Check in at its end, before you switch.`);
 });
 const closeDrawer=()=>drawer(false);
@@ -496,28 +520,7 @@ $('saveReport').onclick=()=>{
  trend.check(tt,st);
  RATE.forEach(resetRate);closeDrawer();
  toast(`Check-in saved for ${PHASE[phase]}. It labels the last ${LABEL_SPAN_S} s of this phase.`);
- const isGuided=$('uGuided')?.checked;
- if(isGuided){
-  const cur=phaseNow();
-  if(cur==='baseline'){
-   document.querySelector('input[name=phase][value=stressor]').checked=true;
-   phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
-   $('reportPhase').textContent='Stressor';
-   trend.mark(phaseStart,'stressor');
-   guidedPrompted=false;
-   toast('Guided protocol: Starting Stressor phase (math/cognitive challenge).');
-  }else if(cur==='stressor'){
-   document.querySelector('input[name=phase][value=recovery]').checked=true;
-   phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
-   $('reportPhase').textContent='Recovery';
-   trend.mark(phaseStart,'recovery');
-   guidedPrompted=false;
-   toast('Guided protocol: Starting Recovery phase (music/rest).');
-  }else if(cur==='recovery'){
-   toast('Guided study complete! Opening session summary.');
-   setTimeout(()=>showSummary(),800);
-  }
- }
+ nudge(false);
 };
 
 const chk=()=>{$('go').disabled=!($('ok').checked&&($('uFace').checked||$('uPulse').checked||$('uPose').checked||$('uVoice').checked))};
@@ -550,11 +553,10 @@ $('go').onclick=async()=>{
   goBtn.textContent='Start setup';
   if(stream)stream.getTracks().forEach(t=>t.stop());return;
  }
- if(timer)clearInterval(timer);
- if(liveTimer)clearInterval(liveTimer);
- fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;
+ clock.stop();
+ fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;hiddenAt=-1;
  calFast={};baseFast=null;fast=null;lastLive=0;zoneIdx=null;afTrailPts=[];
- lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};
+ lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};nudge(false);
  if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q),userAudioCtx):null;
  reports=[];tensionS=null;phaseStart=CAL_END;
  renderState(null);
@@ -567,11 +569,11 @@ $('go').onclick=async()=>{
  $('who').textContent=`${participantId} (${sessionId})`;$('cam').classList.add('on');
  stage('setup');
  goBtn.textContent='Start setup';
- start=performance.now();running=true;loop();timer=setInterval(tick,1000);liveTimer=setInterval(liveTick,LIVE_MS);
+ start=performance.now();running=true;lastTickAt=lastLiveAt=start;loop();clock.start();
 };
 
 $('stop').onclick=()=>{
- running=false;clearInterval(timer);clearInterval(liveTimer);trend.stop();if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
+ running=false;clock.stop();trend.stop();nudge(false);if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
  const mcv=$('meshCv');mcv?.getContext?.('2d')?.clearRect(0,0,mcv.width||640,mcv.height||480);
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
