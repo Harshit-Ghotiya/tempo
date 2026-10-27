@@ -1,10 +1,11 @@
-// Tempo v0.7.7: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
-import {createTracker,isSkin} from './hr.js?v=0.7.7';
-import {initAffect,evalAffect} from './affect.js?v=0.7.7';
-import {createVoiceMonitor} from './voice.js?v=0.7.7';
-import {createTrend,ema} from './chart.js?v=0.7.7';
-import {phaseStats,directionChecks} from './summary.js?v=0.7.7';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.7';
+// Tempo v0.7.8: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
+import {createTracker,isSkin} from './hr.js?v=0.7.8';
+import {initAffect,evalAffect} from './affect.js?v=0.7.8';
+import {createVoiceMonitor} from './voice.js?v=0.7.8';
+import {createTrend,ema} from './chart.js?v=0.7.8';
+import {phaseStats,directionChecks} from './summary.js?v=0.7.8';
+import {createStroopTest,aggregateStroop} from './stroop.js?v=0.7.8';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.8';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -36,7 +37,7 @@ const mean=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN,
  sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(v=>(v-m)**2)))},fin=a=>a.filter(Number.isFinite);
 const median=a=>{const s=[...a].sort((p,q)=>p-q),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2};
 let use,face,pose,tracker,stream,vmon=null,running=false,start,base,lastT=-1,fc=0,pw=null,voice=null,trained=null;
-let fbuf=[],pbuf=[],rgb=[],cal={},log=[];
+let fbuf=[],pbuf=[],rgb=[],cal={},log=[],zSmooth={};
 let participantId='',sessionId='',reports=[],phaseStart=CAL_END,hiddenAt=-1;
 const cv=document.createElement('canvas');let cx=null;
 
@@ -118,7 +119,83 @@ function loop(){
  requestAnimationFrame(loop);
 }
 
-const MESH_PTS=[70,63,105,66,107,336,296,334,293,300,33,160,158,133,153,144,362,385,387,263,373,380,468,473,1,2,98,327,168,6,197,195,5,4,61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409,10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+export const MESH_PTS=[70,63,105,66,107,336,296,334,293,300,33,160,158,133,153,144,362,385,387,263,373,380,468,473,1,2,98,327,168,6,197,195,5,4,61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409,10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
+export const BROW_PTS=new Set([70,63,105,66,107,336,296,334,293,300]);
+export const EYE_PTS=new Set([33,160,158,133,153,144,362,385,387,263,373,380]);
+export const LIP_PTS=new Set([61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409]);
+
+function drawArrow(ctx,x1,y1,x2,y2,color,width=2,head=6){
+ const angle=Math.atan2(y2-y1,x2-x1);
+ ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=width;
+ ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(x2,y2);
+ ctx.lineTo(x2-head*Math.cos(angle-Math.PI/6),y2-head*Math.sin(angle-Math.PI/6));
+ ctx.lineTo(x2-head*Math.cos(angle+Math.PI/6),y2-head*Math.sin(angle+Math.PI/6));
+ ctx.closePath();ctx.fill();
+}
+
+export function drawStressMesh(mcx,L,W,H,z={},usePulse=false){
+ if(!mcx||!L)return;
+ mcx.clearRect(0,0,W,H);
+ for(const idx of MESH_PTS){
+  const pt=L[idx];if(!pt)continue;
+  const px=pt.x*W,py=pt.y*H;
+  let r=1.4,fill='rgba(255,255,255,0.65)';
+  if(BROW_PTS.has(idx)){
+   const bz=z.browLower??0;
+   if(bz>0.4){r=2.0;fill=bz>1.2?'rgba(255,69,58,0.95)':'rgba(255,149,0,0.9)'}
+   else fill='rgba(100,210,255,0.75)';
+  }else if(EYE_PTS.has(idx)){
+   const ez=z.lidTight??0;
+   if(ez>0.4){r=2.0;fill=ez>1.2?'rgba(255,149,0,0.95)':'rgba(255,204,0,0.9)'}
+   else fill='rgba(100,210,255,0.75)';
+  }else if(LIP_PTS.has(idx)){
+   const lz=z.lipTight??0,sz=z.smile??0;
+   if(lz>0.6){r=1.8;fill='rgba(255,69,58,0.85)'}
+   else if(sz>0.6){r=1.8;fill='rgba(52,199,89,0.85)'}
+  }
+  mcx.fillStyle=fill;mcx.beginPath();mcx.arc(px,py,r,0,6.283);mcx.fill();
+ }
+ const bz=z.browLower??0;
+ if(bz>0.5&&L[107]&&L[336]&&L[168]){
+  const gx=L[168].x*W,gy=L[168].y*H,mag=Math.min(1.0,bz/2.5);
+  const x1=L[107].x*W,y1=L[107].y*H;
+  drawArrow(mcx,x1,y1,x1+(gx-x1)*0.75*mag,y1+(gy-y1)*0.75*mag,'rgba(255,59,48,0.85)',2,5);
+  const x2=L[336].x*W,y2=L[336].y*H;
+  drawArrow(mcx,x2,y2,x2+(gx-x2)*0.75*mag,y2+(gy-y2)*0.75*mag,'rgba(255,59,48,0.85)',2,5);
+ }
+ const sz=z.smile??0;
+ if(sz>0.7&&L[61]&&L[291]&&L[234]&&L[454]){
+  const mag=Math.min(1.0,sz/2.5);
+  const x1=L[61].x*W,y1=L[61].y*H,t1x=L[234].x*W,t1y=L[234].y*H;
+  drawArrow(mcx,x1,y1,x1+(t1x-x1)*0.45*mag,y1+(t1y-y1)*0.45*mag,'rgba(52,199,89,0.85)',2,5);
+  const x2=L[291].x*W,y2=L[291].y*H,t2x=L[454].x*W,t2y=L[454].y*H;
+  drawArrow(mcx,x2,y2,x2+(t2x-x2)*0.45*mag,y2+(t2y-y2)*0.45*mag,'rgba(52,199,89,0.85)',2,5);
+ }
+ if(usePulse&&L[454]&&L[234]&&L[151]&&L[50]&&L[280]){
+  mcx.strokeStyle='rgba(255,69,58,0.75)';mcx.lineWidth=1.5;
+  const fw=Math.abs(L[454].x-L[234].x)*W;
+  for(const[c,hx,hy]of[[L[151],.14*fw,.05*fw],[L[50],.07*fw,.07*fw],[L[280],.07*fw,.07*fw]]){
+   const rx=c.x*W-hx,ry=c.y*H-hy,rw=2*hx,rh=2*hy;
+   if(typeof mcx.roundRect==='function'){mcx.beginPath();mcx.roundRect(rx,ry,rw,rh,4);mcx.stroke()}
+   else mcx.strokeRect(rx,ry,rw,rh);
+  }
+ }
+ let hudText='FACS TRACKING',hudColor='rgba(255,255,255,0.9)';
+ if((z.browLower??0)>1.0){hudText='AU4 BROW TENSION ▲';hudColor='#FF453A'}
+ else if((z.lidTight??0)>1.0){hudText='AU7 ORBITAL SQUINT ▲';hudColor='#FF9F0A'}
+ else if((z.smile??0)>1.0){hudText='AU12 SMILE ACTIVE';hudColor='#32D74B'}
+ mcx.save();mcx.translate(W,0);mcx.scale(-1,1);
+ mcx.font='600 10px -apple-system, BlinkMacSystemFont, sans-serif';
+ const tw=mcx.measureText?(mcx.measureText(hudText)?.width||90):90;
+ mcx.fillStyle='rgba(15,23,42,0.65)';
+ if(typeof mcx.roundRect==='function'){mcx.beginPath();mcx.roundRect(10,H-26,tw+16,18,9);mcx.fill()}
+ else mcx.fillRect(10,H-26,tw+16,18);
+ mcx.fillStyle=hudColor;
+ if(mcx.fillText)mcx.fillText(hudText,18,H-13);
+ mcx.restore();
+}
+
 function frame(v,t){
  if(face){
   const o={t,ok:false},r=face.detectForVideo(v,t),L=r.faceLandmarks[0];
@@ -157,16 +234,7 @@ function frame(v,t){
    if(mcx&&$('uMesh')?.checked){
     const W=v.videoWidth,H=v.videoHeight;
     if(mcv.width!==W||mcv.height!==H){mcv.width=W;mcv.height=H}
-    mcx.clearRect(0,0,W,H);
-    mcx.fillStyle='rgba(255,255,255,0.75)';
-    for(const idx of MESH_PTS){const pt=L[idx];if(pt){mcx.beginPath();mcx.arc(pt.x*W,pt.y*H,1.5,0,6.283);mcx.fill()}}
-    if(use.pulse){
-     mcx.strokeStyle='rgba(255,69,58,0.75)';mcx.lineWidth=1.5;
-     const fw=Math.abs(L[454].x-L[234].x)*W;
-     for(const[c,hx,hy]of[[L[151],.14*fw,.05*fw],[L[50],.07*fw,.07*fw],[L[280],.07*fw,.07*fw]]){
-      mcx.strokeRect(c.x*W-hx,c.y*H-hy,2*hx,2*hy);
-     }
-    }
+    drawStressMesh(mcx,L,W,H,zSmooth,use.pulse);
    }else if(mcx&&mcv.width){mcx.clearRect(0,0,mcv.width,mcv.height)}
   }else if(mcx&&mcv.width){mcx.clearRect(0,0,mcv.width,mcv.height)}
   fbuf.push(o);
@@ -252,7 +320,7 @@ const ROWS={face:[['browLower','Brow lowering'],['browRaise','Brow raise'],['lid
 const phaseNow=()=>document.querySelector('input[name=phase]:checked').value;
 const mmss=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 const presence=()=>{const r=fbuf.slice(-30);return r.length?r.filter(o=>o.ok).length/r.length:0};
-let tensionS=null,zSmooth={};
+let tensionS=null;
 const trend=createTrend($('trend'));
 buildRows('rowsFace',ROWS.face);buildRows('rowsPose',ROWS.pose);RATE.forEach(initRate);
 
@@ -490,6 +558,7 @@ function tick(){
   window_start_s:+ws.toFixed(1),window_end_s:+el.toFixed(1),feature_start_s:+Math.max(0,fs0).toFixed(1),phase,phase_start_s:+phaseStart.toFixed(1),
   transition:!pre&&!inside,tension_idx:tn??'',tension_fast:fast==null?'':+fast.toFixed(3),valence:af?+af.valence.toFixed(3):'',arousal:af?+af.arousal.toFixed(3):'',
   skin_luma:light?+light.luma.toFixed(1):'',skin_rg:light?+light.rg.toFixed(2):'',hr_baseline_late:hrLate,
+  stroop_active:stroopTest?.isActive?.()?1:0,
   fps:+fps.toFixed(1),tab_hidden:document.hidden,
   ...x,...Object.fromEntries(Object.entries(z).map(([k,v])=>['z_'+k,v])),
   ...(all?{p_sattva:all.sattva,p_rajas:all.rajas,p_tamas:all.tamas}:{}),
@@ -503,6 +572,7 @@ $('phaseSeg').addEventListener('change',()=>{
  $('reportPhase').textContent=PHASE[phaseNow()];
  trend.mark(phaseStart,phaseNow());
  guidedPrompted=false;nudge(false);
+ $('btnStroop')?.classList.toggle('active-hint',phaseNow()==='stressor');
  toast(`Phase: ${PHASE[phaseNow()]}. Check in at its end, before you switch.`);
 });
 const closeDrawer=()=>drawer(false);
@@ -556,7 +626,7 @@ $('go').onclick=async()=>{
  clock.stop();
  fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;hiddenAt=-1;
  calFast={};baseFast=null;fast=null;lastLive=0;zoneIdx=null;afTrailPts=[];
- lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};nudge(false);
+ lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};nudge(false);latestStroop=null;$('btnStroop')?.classList.remove('active-hint');
  if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q),userAudioCtx):null;
  reports=[];tensionS=null;phaseStart=CAL_END;
  renderState(null);
@@ -573,7 +643,8 @@ $('go').onclick=async()=>{
 };
 
 $('stop').onclick=()=>{
- running=false;clock.stop();trend.stop();nudge(false);if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
+ running=false;clock.stop();trend.stop();nudge(false);stroopTest?.stop?.();$('btnStroop')?.classList.remove('active-hint');
+ if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
  const mcv=$('meshCv');mcv?.getContext?.('2d')?.clearRect(0,0,mcv.width||640,mcv.height||480);
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
@@ -585,7 +656,7 @@ const showSummary=()=>{
  const dur=start?(performance.now()-start)/1e3:0;
  const stats=phaseStats(log,reports);
  const checks=directionChecks(stats);
- renderSummary(stats,checks,log,{participantId,sessionId,durationS:dur,reportCount:reports.length});
+ renderSummary(stats,checks,log,{participantId,sessionId,durationS:dur,reportCount:reports.length,stroop:latestStroop});
  openDialog($('summary'));
 };
 
@@ -594,6 +665,123 @@ $('sumClose').onclick=()=>closeDialog($('summary'));
 $('sumDone').onclick=()=>closeDialog($('summary'));
 $('sumPrint').onclick=()=>window.print();
 $('openSummary').onclick=showSummary;
+
+// Built-in Stroop cognitive stressor
+let latestStroop=null;
+
+const updateStroopFeedback=ok=>{
+ const box=$('stroopWordBox');
+ if(!box)return;
+ box.classList.remove('err-shake','correct-pulse');
+ void box.offsetWidth;
+ box.classList.add(ok?'correct-pulse':'err-shake');
+};
+
+const updateStroopStats=resList=>{
+ const agg=aggregateStroop(resList);
+ const sc=$('stroopScoreNum'),ac=$('stroopAccNum'),rt=$('stroopRtNum');
+ if(sc)sc.textContent=agg.correct;
+ if(ac)ac.textContent=agg.accuracy+'%';
+ if(rt)rt.textContent=agg.meanRtMs?`${agg.meanRtMs} ms`:'–';
+};
+
+export const stroopTest=createStroopTest({
+ durationS:60,
+ onTrial(trial,trialIndex){
+  const word=$('stroopWord');
+  if(word){word.textContent=trial.word;word.style.color=trial.colorHex}
+  const tr=$('stroopTrialNum');
+  if(tr)tr.textContent=trialIndex+1;
+ },
+ onTick(remainingS,totalS){
+  const s=$('stroopSecs');
+  if(s)s.textContent=remainingS;
+  const fill=$('stroopProgressFill');
+  if(fill)fill.style.width=`${Math.max(0,Math.min(100,(remainingS/totalS)*100))}%`;
+ },
+ onFinish(summary){
+  latestStroop=summary;
+  const act=$('stroopActive'),sum=$('stroopSummary');
+  if(act)act.hidden=true;
+  if(sum)sum.hidden=false;
+  const fa=$('stroopFinalAcc'),ft=$('stroopFinalTrials'),fr=$('stroopFinalRt'),fi=$('stroopFinalInterference');
+  if(fa)fa.textContent=summary.accuracy+'%';
+  if(ft)ft.textContent=summary.trials;
+  if(fr)fr.textContent=summary.meanRtMs?`${summary.meanRtMs} ms`:'–';
+  if(fi)fi.textContent=summary.interferenceMs>0?`+${summary.interferenceMs} ms`:'0 ms';
+  chime();
+  toast(`Stroop challenge complete (${summary.trials} trials, ${summary.accuracy}% accuracy). Check in to rate your stress.`);
+ }
+});
+
+const btnStroop=$('btnStroop');
+if(btnStroop){
+ btnStroop.onclick=()=>{
+  if(running&&phaseNow()!=='stressor'){
+   const r=document.querySelector('input[name=phase][value=stressor]');
+   if(r){r.checked=true;r.dispatchEvent(new Event('change'))}
+  }
+  const intro=$('stroopIntro'),act=$('stroopActive'),sum=$('stroopSummary'),sec=$('stroopSecs');
+  if(intro)intro.hidden=false;
+  if(act)act.hidden=true;
+  if(sum)sum.hidden=true;
+  if(sec)sec.textContent='60';
+  openDialog($('stroopModal'));
+ };
+}
+
+const stroopStartBtn=$('stroopStartBtn');
+if(stroopStartBtn){
+ stroopStartBtn.onclick=()=>{
+  const intro=$('stroopIntro'),act=$('stroopActive'),sum=$('stroopSummary');
+  if(intro)intro.hidden=true;
+  if(act)act.hidden=false;
+  if(sum)sum.hidden=true;
+  stroopTest.start();
+ };
+}
+
+['Red','Green','Blue','Yellow'].forEach(color=>{
+ const btn=$(`stroopBtn${color}`);
+ if(btn){
+  btn.onclick=()=>{
+   const res=stroopTest.answer(color);
+   if(res){
+    updateStroopFeedback(res.ok);
+    updateStroopStats(stroopTest.getResults());
+   }
+  };
+ }
+});
+
+document.addEventListener('keydown',e=>{
+ const modal=$('stroopModal');
+ if(modal&&modal.open&&stroopTest.isActive()){
+  const res=stroopTest.handleKey(e);
+  if(res){
+   updateStroopFeedback(res.ok);
+   updateStroopStats(stroopTest.getResults());
+  }
+ }
+});
+
+setupDialogDismiss($('stroopModal'));
+const stroopClose=$('stroopClose');
+if(stroopClose){
+ stroopClose.onclick=()=>{
+  stroopTest.stop();
+  closeDialog($('stroopModal'));
+ };
+}
+const stroopDoneBtn=$('stroopDoneBtn');
+if(stroopDoneBtn)stroopDoneBtn.onclick=()=>closeDialog($('stroopModal'));
+const stroopCheckinBtn=$('stroopCheckinBtn');
+if(stroopCheckinBtn){
+ stroopCheckinBtn.onclick=()=>{
+  closeDialog($('stroopModal'));
+  $('openReport')?.click();
+ };
+}
 
 // Retrospective labelling, applied at export (a label needs a report that arrives after the window).
 // A window takes a self-report's label only if it lies wholly inside the reported phase, shares its phase,

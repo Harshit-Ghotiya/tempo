@@ -159,6 +159,10 @@
     <div class="guided-bar" id="guidedBar" hidden title="Phase progress"><div class="guided-fill" id="guidedFill" style="width:0%"></div></div>
     <span class="pill" id="win" role="status">setting up</span>
     <span class="barline-gap"></span>
+    <button class="btn ghost btn-stroop" id="btnStroop" type="button" title="Standardized 60-second Stroop color-word test">
+     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+     Stroop test
+    </button>
     <button class="btn" id="openReport">
      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
      Check in
@@ -338,6 +342,7 @@
   <button id="sumClose" class="iconbtn" aria-label="Close summary">×</button>
  </header>
  <section id="sumPhases" class="sumphases"></section>
+ <section id="sumStroop" class="sumstroop" hidden></section>
  <figure class="sumfig">
   <svg id="sumChart" viewBox="0 0 800 220" role="img" aria-label="Facial tension over the whole session"></svg>
   <figcaption>Facial tension index (10 s rolling windows) across the session; check-ins marked.</figcaption>
@@ -347,6 +352,71 @@
  <div class="act">
   <button class="btn" id="sumPrint">Save as PDF</button>
   <button class="btn ghost" id="sumDone">Close</button>
+ </div>
+</dialog>
+
+<dialog id="stroopModal" closedby="any" aria-labelledby="stroopTitle">
+ <div class="stroop-wrap">
+  <header class="stroop-head">
+   <div>
+    <span class="eyebrow" style="color:var(--orange)">Standardized Cognitive Stressor</span>
+    <h2 id="stroopTitle">Stroop Color-Word Challenge</h2>
+    <p class="subhead">Identify the <b>FONT COLOR</b>, ignoring the written word. Speed and accuracy both count.</p>
+   </div>
+   <div class="stroop-head-side">
+    <div class="stroop-timer"><span id="stroopSecs">60</span><small>s</small></div>
+    <button id="stroopClose" class="iconbtn" aria-label="Close Stroop test">×</button>
+   </div>
+  </header>
+
+  <div class="stroop-stage" id="stroopStage">
+   <div class="stroop-intro" id="stroopIntro">
+    <p class="lede" style="font-size:15px;line-height:22px;margin-bottom:16px">The Stroop effect tests cognitive conflict by presenting color names written in conflicting ink colors. Identify the ink color as fast as you can without making errors.</p>
+    <div class="stroop-keys-guide">
+     <span><kbd>1</kbd> · <kbd>R</kbd> Red</span>
+     <span><kbd>2</kbd> · <kbd>G</kbd> Green</span>
+     <span><kbd>3</kbd> · <kbd>B</kbd> Blue</span>
+     <span><kbd>4</kbd> · <kbd>Y</kbd> Yellow</span>
+    </div>
+    <div class="act" style="margin-top:20px">
+     <button class="btn btn-full" id="stroopStartBtn">Start 60 s Challenge</button>
+    </div>
+   </div>
+
+   <div class="stroop-active" id="stroopActive" hidden>
+    <div class="stroop-progress-bar"><div id="stroopProgressFill" class="stroop-progress-fill" style="width:100%"></div></div>
+    <div class="stroop-word-box" id="stroopWordBox">
+     <span class="stroop-word" id="stroopWord">READY</span>
+    </div>
+    <div class="stroop-buttons">
+     <button class="stroop-btn red" id="stroopBtnRed" type="button" data-color="Red"><span class="kbadge">1 · R</span>Red</button>
+     <button class="stroop-btn green" id="stroopBtnGreen" type="button" data-color="Green"><span class="kbadge">2 · G</span>Green</button>
+     <button class="stroop-btn blue" id="stroopBtnBlue" type="button" data-color="Blue"><span class="kbadge">3 · B</span>Blue</button>
+     <button class="stroop-btn yellow" id="stroopBtnYellow" type="button" data-color="Yellow"><span class="kbadge">4 · Y</span>Yellow</button>
+    </div>
+    <div class="stroop-live-stats">
+     <span>Trial: <b id="stroopTrialNum">0</b></span>
+     <span>Correct: <b id="stroopScoreNum">0</b></span>
+     <span>Accuracy: <b id="stroopAccNum">100%</b></span>
+     <span>Avg Reaction: <b id="stroopRtNum">0 ms</b></span>
+    </div>
+   </div>
+
+   <div class="stroop-summary" id="stroopSummary" hidden>
+    <div class="stroop-badge-done">Challenge Complete</div>
+    <div class="stroop-stats-grid">
+     <div class="stroop-stat-card"><small>Accuracy</small><b id="stroopFinalAcc">–</b></div>
+     <div class="stroop-stat-card"><small>Trials Completed</small><b id="stroopFinalTrials">–</b></div>
+     <div class="stroop-stat-card"><small>Mean Reaction</small><b id="stroopFinalRt">–</b></div>
+     <div class="stroop-stat-card"><small>Stroop Interference</small><b id="stroopFinalInterference">–</b></div>
+    </div>
+    <p class="dusk small" style="margin-top:14px">High cognitive interference and suppressed blink rate during this task directly correlate with autonomic stress elevation.</p>
+    <div class="act" style="margin-top:20px">
+     <button class="btn" id="stroopCheckinBtn">Check in for Stressor</button>
+     <button class="btn ghost" id="stroopDoneBtn">Done</button>
+    </div>
+   </div>
+  </div>
  </div>
 </dialog>
 

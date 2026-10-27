@@ -248,6 +248,29 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     }).join('');
   }
 
+  // Stroop cognitive stressor result
+  const sumStroop = $('sumStroop');
+  if (sumStroop) {
+    if (meta.stroop && meta.stroop.trials > 0) {
+      sumStroop.hidden = false;
+      sumStroop.innerHTML = `
+        <div class="sumstroop-title">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          Cognitive Stressor: Stroop Color-Word Challenge
+        </div>
+        <div>
+          <b>${meta.stroop.trials}</b> trials completed ·
+          <b>${meta.stroop.accuracy}%</b> accuracy ·
+          <b>${meta.stroop.meanRtMs} ms</b> mean reaction time
+          ${meta.stroop.interferenceMs > 0 ? `· <b>+${meta.stroop.interferenceMs} ms</b> Stroop cognitive interference delay` : ''}
+        </div>
+      `;
+    } else {
+      sumStroop.hidden = true;
+      sumStroop.innerHTML = '';
+    }
+  }
+
   // 2. Whole session chart
   const svg = $('sumChart');
   if (svg) {

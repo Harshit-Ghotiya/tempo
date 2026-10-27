@@ -412,4 +412,145 @@ test('session summary: phaseStats aggregation, directionChecks agreement and ren
   assert.ok(dlg.hasAttribute('open'), 'keyboard/child element click inside dialog must not light-dismiss');
   dlg.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, clientX: 20, clientY: 20 }));
   assert.ok(!dlg.hasAttribute('open'), 'backdrop click on dialog outside bounding box closes dialog');
+
+  // renderSummary with Stroop results
+  ui.renderSummary(stats, checks, log, {
+    participantId: 'P101',
+    sessionId: 'S02',
+    durationS: 270,
+    reportCount: 3,
+    stroop: { trials: 35, correct: 32, accuracy: 91, meanRtMs: 580, interferenceMs: 140 }
+  });
+  const sumStroop = $('sumStroop');
+  assert.equal(sumStroop.hidden, false);
+  assert.match(sumStroop.textContent, /Stroop Color-Word Challenge/);
+  assert.match(sumStroop.textContent, /91% accuracy/);
+  assert.match(sumStroop.textContent, /\+140 ms/);
+});
+
+test('stroop.js: trial generation, response scoring, interference calculation and test lifecycle', async () => {
+  const { STROOP_COLORS, generateTrial, evaluateResponse, aggregateStroop, createStroopTest } = await import('../stroop.js');
+
+  assert.equal(STROOP_COLORS.length, 4);
+  const colorNames = STROOP_COLORS.map(c => c.name);
+
+  // 1. generateTrial
+  const trial = generateTrial();
+  assert.ok(colorNames.includes(trial.word));
+  assert.ok(colorNames.includes(trial.colorName));
+  assert.ok(typeof trial.isCongruent === 'boolean');
+  if (trial.isCongruent) {
+    assert.equal(trial.word, trial.colorName);
+  }
+
+  // 2. evaluateResponse
+  const correct = evaluateResponse({ word: 'Red', colorName: 'Green', isCongruent: false, presentedAt: 1000 }, 'Green', 1650);
+  assert.equal(correct.ok, true);
+  assert.equal(correct.rtMs, 650);
+  assert.equal(correct.chosenName, 'Green');
+
+  const wrong = evaluateResponse({ word: 'Blue', colorName: 'Yellow', isCongruent: false, presentedAt: 1000 }, 'Blue', 1500);
+  assert.equal(wrong.ok, false);
+  assert.equal(wrong.rtMs, 500);
+
+  // 3. aggregateStroop
+  const dummyResults = [
+    { word: 'Red', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 500, isCongruent: true },
+    { word: 'Blue', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 520, isCongruent: true },
+    { word: 'Green', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 650, isCongruent: false },
+    { word: 'Yellow', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 670, isCongruent: false },
+    { word: 'Red', colorName: 'Green', chosenName: 'Yellow', ok: false, rtMs: 700, isCongruent: false }
+  ];
+  const agg = aggregateStroop(dummyResults);
+  assert.equal(agg.trials, 5);
+  assert.equal(agg.correct, 4);
+  assert.equal(agg.accuracy, 80);
+  assert.equal(agg.congruentMeanRtMs, 510);
+  assert.equal(agg.incongruentMeanRtMs, 660);
+  assert.equal(agg.interferenceMs, 150); // 660 - 510 = 150 ms cognitive delay
+
+  // 4. createStroopTest lifecycle
+  let trialsReceived = 0;
+  let testSummary = null;
+  const testEngine = createStroopTest({
+    durationS: 2,
+    onTrial: (t) => { trialsReceived++; },
+    onFinish: (s) => { testSummary = s; }
+  });
+  assert.equal(testEngine.isActive(), false);
+  testEngine.start();
+  assert.equal(testEngine.isActive(), true);
+  assert.equal(trialsReceived, 1);
+
+  // Answer trial
+  const res1 = testEngine.answer('Red');
+  assert.ok(res1);
+  assert.equal(trialsReceived, 2);
+
+  // Answer via key
+  const handled = testEngine.handleKey({ key: '1' });
+  assert.ok(handled);
+  assert.equal(trialsReceived, 3);
+
+  const stoppedSummary = testEngine.stop();
+  assert.equal(testEngine.isActive(), false);
+  assert.equal(stoppedSummary.trials, 2);
+  assert.equal(testSummary?.trials, 2);
+});
+
+test('face mesh stress vectors & tension heatmap (drawStressMesh)', async () => {
+  const { drawStressMesh, MESH_PTS, BROW_PTS, EYE_PTS, LIP_PTS } = await import('../app.js');
+
+  assert.ok(MESH_PTS.length >= 80);
+  assert.ok(BROW_PTS.size > 0);
+  assert.ok(EYE_PTS.size > 0);
+  assert.ok(LIP_PTS.size > 0);
+
+  // Build mock 478 landmarks
+  const mockLandmarks = Array.from({ length: 478 }, (_, i) => ({
+    x: 0.5 + Math.sin(i) * 0.2,
+    y: 0.5 + Math.cos(i) * 0.2,
+    z: 0
+  }));
+
+  // Mock 2D canvas context
+  const calls = { arc: 0, fill: 0, stroke: 0, strokeRect: 0, roundRect: 0, fillText: 0, measureText: 0 };
+  const mockCtx = {
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+    font: '',
+    clearRect() {},
+    beginPath() {},
+    closePath() {},
+    moveTo() {},
+    lineTo() {},
+    arc() { calls.arc++; },
+    fill() { calls.fill++; },
+    stroke() { calls.stroke++; },
+    fillRect() {},
+    strokeRect() { calls.strokeRect++; },
+    roundRect() { calls.roundRect++; },
+    save() {},
+    restore() {},
+    translate() {},
+    scale() {},
+    measureText() { calls.measureText++; return { width: 85 }; },
+    fillText() { calls.fillText++; }
+  };
+
+  // 1. Draw with elevated AU4 brow tension and AU7 orbital squint
+  drawStressMesh(mockCtx, mockLandmarks, 640, 480, { browLower: 1.6, lidTight: 1.4, smile: 0 }, false);
+
+  assert.ok(calls.arc >= MESH_PTS.length, 'Every mesh landmark dot rendered');
+  assert.ok(calls.fill > 0, 'Dots and HUD filled');
+  assert.ok(calls.stroke >= 2, 'Biomechanical AU4 brow furrowing arrows stroked');
+  assert.ok(calls.fillText > 0, 'FACS HUD badge rendered');
+
+  // 2. Draw with pulse ROIs enabled
+  calls.roundRect = 0;
+  calls.strokeRect = 0;
+  drawStressMesh(mockCtx, mockLandmarks, 640, 480, { browLower: 0, lidTight: 0, smile: 1.2 }, true);
+
+  assert.ok(calls.roundRect + calls.strokeRect >= 3, 'Pulse ROIs (forehead + cheeks) rendered');
 });

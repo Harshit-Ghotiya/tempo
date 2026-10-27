@@ -1,8 +1,45 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.7 (phase reminder mode, background worker clock, empirical tension weights, and Apple Health UI styling)  
+**Project version:** v0.7.8 (built-in Stroop cognitive stressor, biomechanical FACS face mesh stress vectors, and interference telemetry)  
 **Date:** 2026-10-27  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
+
+---
+
+## v0.7.8 update (2026-10-27): built-in Stroop cognitive stressor, biomechanical FACS face mesh stress vectors, and interference telemetry (feat/stroop-mesh-stress-vectors)
+
+Changed
+1. `stroop.js`:
+   - Pure, modular cognitive stressor engine: `STROOP_COLORS` (Red, Green, Blue, Yellow with keyboard keys `1-4`, `R/G/B/Y`, and arrows), `generateTrial(congruentRatio = 0.25)`, `evaluateResponse(trial, chosenName, answeredAt)`, and `aggregateStroop(results)`.
+   - Cognitive interference calculation: calculates reaction time delay on incongruent trials (`interferenceMs = incongRt - congRt`) alongside accuracy and trial count.
+   - Lifecycle manager `createStroopTest()`: handles 60 s countdown interval, trial transitions, response scoring, keyboard/click dispatch, and completion callbacks.
+2. `index.html`:
+   - Added `#btnStroop` trigger in control bar with brain icon and keyboard cue.
+   - Added `#sumStroop` cognitive stressor card in `#summary` dialog.
+   - Added `#stroopModal` dialog with intro guide, 60 s timer, active challenge box (`#stroopWordBox`), color buttons (`#stroopBtnRed` etc.), live stats counters, and completion stats grid (`#stroopSummary`).
+   - Bumped module versions to `?v=0.7.8`.
+3. `styles.css`:
+   - Dialog transitions for `#stroopModal` matching macOS Apple Health design system.
+   - Keycap styles (`kbd`, `.kbadge`), color buttons (`.stroop-btn.red`, `.green`, `.blue`, `.yellow`), word box feedback animations (`@keyframes correctPulse`, `@keyframes shakeErr`), and live stats pills.
+   - `.btn-stroop.active-hint` pulse animation to prompt participant when Stressor phase begins.
+4. `app.js`:
+   - Biomechanical FACS Face Mesh: implemented `drawStressMesh(mcx, L, W, H, z, usePulse)`:
+     - Chromatic heatmap: points dynamically shift from calm cyan/white (`rgba(100,210,255,0.75)`) to amber/crimson (`#FF3B30` / `#FF9500`) when brow lowering (`AU4`) or lid tightening (`AU7`) are elevated.
+     - Directional vector arrows: draws corrugator brow furrowing arrows from `L[107]` and `L[336]` pulling downward and inward toward the glabella `L[168]` proportional to `z.browLower`, and zygomatic smile vectors from mouth corners to cheekbones proportional to `z.smile`.
+     - Pulse ROIs: renders forehead and cheek sample windows when pulse tracking is enabled.
+     - Canvas HUD badge: renders an un-mirrored on-canvas badge (`AU4 BROW TENSION ▲`, `AU7 ORBITAL SQUINT ▲`, `AU12 SMILE ACTIVE`, or `FACS TRACKING`).
+   - Stroop Integration: wired `stroopTest` to modal triggers, color clicks, and keyboard shortcuts; logged `stroop_active` flag in per-second telemetry; passed `stroop: latestStroop` to `renderSummary()`; automated phase hint in `phaseSeg`.
+5. `ui.js`:
+   - `renderSummary()`: added rendering for `#sumStroop` cognitive stressor section showing trials, accuracy, mean RT, and Stroop interference delay.
+6. `tests/ui.test.mjs`:
+   - Added comprehensive unit tests for Stroop trial generation, response scoring, interference calculation, and test engine lifecycle.
+   - Added unit test for `drawStressMesh` with mock 2D context verifying landmark rendering, biomechanical arrow drawing, HUD text, and pulse ROIs.
+   - Verified that all script element IDs exist in `index.html` and that launcher copies all modules.
+7. `launcher/build.sh`:
+   - Added `../stroop.js` to build copy step; updated `launcher/site/` and verified Go launcher builds cleanly.
+
+Checked: `node --check app.js ui.js hr.js affect.js voice.js chart.js summary.js stroop.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (33 tests pass); `cd launcher && go build -trimpath -ldflags "-s -w" -o tempo-launcher .`.
+Not checked: real multi-participant webcam study runs across diverse operating systems; hardware rPPG under varying lighting conditions; packaged native macOS universal bundle.
 
 ---
 
