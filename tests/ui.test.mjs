@@ -431,35 +431,52 @@ test('session summary: phaseStats aggregation, directionChecks agreement and ren
 test('stroop.js: trial generation, response scoring, interference calculation and test lifecycle', async () => {
   const { STROOP_COLORS, generateTrial, evaluateResponse, aggregateStroop, createStroopTest } = await import('../stroop.js');
 
-  assert.equal(STROOP_COLORS.length, 4);
+  assert.equal(STROOP_COLORS.length, 7);
   const colorNames = STROOP_COLORS.map(c => c.name);
+
+  // Chromatic dissonance check: ink shade is distinct from button swatch
+  STROOP_COLORS.forEach(c => {
+    assert.ok(c.inkHex, 'has inkHex');
+    assert.ok(c.btnHex, 'has btnHex');
+    assert.notEqual(c.inkHex, c.btnHex, 'chromatic dissonance between ink and button: ' + c.name);
+  });
 
   // 1. generateTrial
   const trial = generateTrial();
   assert.ok(colorNames.includes(trial.word));
   assert.ok(colorNames.includes(trial.colorName));
+  assert.equal(trial.buttonOptions.length, 4);
+  assert.ok(typeof trial.isNone === 'boolean');
   assert.ok(typeof trial.isCongruent === 'boolean');
   if (trial.isCongruent) {
     assert.equal(trial.word, trial.colorName);
   }
 
   // 2. evaluateResponse
-  const correct = evaluateResponse({ word: 'Red', colorName: 'Green', isCongruent: false, presentedAt: 1000 }, 'Green', 1650);
+  const correct = evaluateResponse({ word: 'Red', colorName: 'Green', isNone: false, isCongruent: false, presentedAt: 1000 }, 'Green', 1650);
   assert.equal(correct.ok, true);
   assert.equal(correct.rtMs, 650);
   assert.equal(correct.chosenName, 'Green');
 
-  const wrong = evaluateResponse({ word: 'Blue', colorName: 'Yellow', isCongruent: false, presentedAt: 1000 }, 'Blue', 1500);
+  const wrong = evaluateResponse({ word: 'Blue', colorName: 'Yellow', isNone: false, isCongruent: false, presentedAt: 1000 }, 'Blue', 1500);
   assert.equal(wrong.ok, false);
   assert.equal(wrong.rtMs, 500);
 
+  // Catch trial: 'None of the above'
+  const catchCorrect = evaluateResponse({ word: 'Purple', colorName: 'Cyan', isNone: true, presentedAt: 1000 }, 'None', 1450);
+  assert.equal(catchCorrect.ok, true);
+  assert.equal(catchCorrect.isNone, true);
+
+  const catchWrong = evaluateResponse({ word: 'Purple', colorName: 'Cyan', isNone: true, presentedAt: 1000 }, 'Red', 1450);
+  assert.equal(catchWrong.ok, false);
+
   // 3. aggregateStroop
   const dummyResults = [
-    { word: 'Red', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 500, isCongruent: true },
-    { word: 'Blue', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 520, isCongruent: true },
-    { word: 'Green', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 650, isCongruent: false },
-    { word: 'Yellow', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 670, isCongruent: false },
-    { word: 'Red', colorName: 'Green', chosenName: 'Yellow', ok: false, rtMs: 700, isCongruent: false }
+    { word: 'Red', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 500, isCongruent: true, isNone: false },
+    { word: 'Blue', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 520, isCongruent: true, isNone: false },
+    { word: 'Green', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 650, isCongruent: false, isNone: false },
+    { word: 'Yellow', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 670, isCongruent: false, isNone: false },
+    { word: 'Red', colorName: 'Green', chosenName: 'Yellow', ok: false, rtMs: 700, isCongruent: false, isNone: false }
   ];
   const agg = aggregateStroop(dummyResults);
   assert.equal(agg.trials, 5);
@@ -487,15 +504,20 @@ test('stroop.js: trial generation, response scoring, interference calculation an
   assert.ok(res1);
   assert.equal(trialsReceived, 2);
 
-  // Answer via key
-  const handled = testEngine.handleKey({ key: '1' });
-  assert.ok(handled);
+  // Answer via key 1-4
+  const handled1 = testEngine.handleKey({ key: '1' });
+  assert.ok(handled1);
   assert.equal(trialsReceived, 3);
+
+  // Answer via key 5 (None)
+  const handled5 = testEngine.handleKey({ key: '5' });
+  assert.ok(handled5);
+  assert.equal(trialsReceived, 4);
 
   const stoppedSummary = testEngine.stop();
   assert.equal(testEngine.isActive(), false);
-  assert.equal(stoppedSummary.trials, 2);
-  assert.equal(testSummary?.trials, 2);
+  assert.equal(stoppedSummary.trials, 3);
+  assert.equal(testSummary?.trials, 3);
 });
 
 test('face mesh stress vectors & tension heatmap (drawStressMesh)', async () => {

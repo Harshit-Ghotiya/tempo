@@ -1,45 +1,85 @@
 // stroop.js: Standardized Stroop Color-Word cognitive stressor engine and trial generator.
-// Evaluates cognitive interference (reaction time delay on incongruent trials) and mental effort.
+// Evaluates cognitive interference (reaction time delay on incongruent trials), dynamic color rotation, and catch trials.
 
 export const STROOP_COLORS = [
-  { name: 'Red', hex: '#FF3B30', key: 'r', num: '1', arrow: 'ArrowLeft' },
-  { name: 'Green', hex: '#34C759', key: 'g', num: '2', arrow: 'ArrowUp' },
-  { name: 'Blue', hex: '#007AFF', key: 'b', num: '3', arrow: 'ArrowDown' },
-  { name: 'Yellow', hex: '#FFCC00', key: 'y', num: '4', arrow: 'ArrowRight' }
+  { name: 'Red',    inkHex: '#FF453A', btnHex: '#D70015', key: 'r', class: 'red' },
+  { name: 'Green',  inkHex: '#30D158', btnHex: '#248A3D', key: 'g', class: 'green' },
+  { name: 'Blue',   inkHex: '#0A84FF', btnHex: '#0058D0', key: 'b', class: 'blue' },
+  { name: 'Yellow', inkHex: '#FFD60A', btnHex: '#CC8800', key: 'y', class: 'yellow' },
+  { name: 'Purple', inkHex: '#BF5AF2', btnHex: '#8944AB', key: 'p', class: 'purple' },
+  { name: 'Orange', inkHex: '#FF9F0A', btnHex: '#C96800', key: 'o', class: 'orange' },
+  { name: 'Cyan',   inkHex: '#64D2FF', btnHex: '#0082A8', key: 'c', class: 'cyan' }
 ];
 
-export function generateTrial(congruentRatio = 0.25) {
-  const isCongruent = Math.random() < congruentRatio;
-  const wordIdx = Math.floor(Math.random() * STROOP_COLORS.length);
-  const word = STROOP_COLORS[wordIdx].name;
-  let colorIdx;
-  if (isCongruent) {
-    colorIdx = wordIdx;
-  } else {
-    // Pick a different color
-    const others = [0, 1, 2, 3].filter(i => i !== wordIdx);
-    colorIdx = others[Math.floor(Math.random() * others.length)];
+// Backward-compatibility hex alias
+STROOP_COLORS.forEach(c => { c.hex = c.btnHex; });
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  const color = STROOP_COLORS[colorIdx];
+  return a;
+}
+
+export function generateTrial(congruentRatio = 0.20, noneRatio = 0.20) {
+  // 1. Pick 4 rotating button options from the 7-color pool
+  const shuffled = shuffle(STROOP_COLORS);
+  const buttonOptions = shuffled.slice(0, 4);
+  const absentColors = shuffled.slice(4);
+
+  const isNone = Math.random() < noneRatio;
+  let targetColor;
+  let word;
+  let isCongruent = false;
+
+  if (isNone) {
+    // Ink color is deliberately chosen from absentColors so NO button matches
+    targetColor = absentColors[Math.floor(Math.random() * absentColors.length)];
+    // Word can be any color name (often one of the button names as a strong distractor)
+    word = shuffled[Math.floor(Math.random() * shuffled.length)].name;
+  } else {
+    // Ink color is one of the 4 displayed buttons
+    targetColor = buttonOptions[Math.floor(Math.random() * buttonOptions.length)];
+    isCongruent = Math.random() < congruentRatio;
+    if (isCongruent) {
+      word = targetColor.name;
+    } else {
+      const otherNames = STROOP_COLORS.filter(c => c.name !== targetColor.name).map(c => c.name);
+      word = otherNames[Math.floor(Math.random() * otherNames.length)];
+    }
+  }
+
   return {
     word,
-    colorName: color.name,
-    colorHex: color.hex,
-    isCongruent,
+    colorName: targetColor.name,
+    inkHex: targetColor.inkHex,
+    colorHex: targetColor.inkHex, // backward compat
+    btnHex: targetColor.btnHex,
+    buttonOptions,
+    isNone,
+    isCongruent: !isNone && isCongruent,
     presentedAt: performance.now()
   };
 }
 
 export function evaluateResponse(trial, chosenName, answeredAt = performance.now()) {
   const rtMs = Math.max(0, Math.round(answeredAt - (trial.presentedAt || answeredAt)));
-  const ok = trial.colorName.toLowerCase() === (chosenName || '').toLowerCase();
+  const norm = s => (s || '').toLowerCase().trim();
+  const cNorm = norm(chosenName);
+  const ok = trial.isNone
+    ? (cNorm === 'none' || cNorm === 'none of the above')
+    : (cNorm === norm(trial.colorName));
+
   return {
     word: trial.word,
     colorName: trial.colorName,
     chosenName,
     ok,
     rtMs,
-    isCongruent: trial.isCongruent
+    isNone: !!trial.isNone,
+    isCongruent: !!trial.isCongruent
   };
 }
 
@@ -52,6 +92,7 @@ export function aggregateStroop(results = []) {
       meanRtMs: 0,
       congruentMeanRtMs: 0,
       incongruentMeanRtMs: 0,
+      noneMeanRtMs: 0,
       interferenceMs: 0,
       score: 0
     };
@@ -64,8 +105,9 @@ export function aggregateStroop(results = []) {
 
   const mean = arr => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0;
   const meanRtMs = mean(correctTrials.map(r => r.rtMs));
-  const congRt = mean(correctTrials.filter(r => r.isCongruent).map(r => r.rtMs));
-  const incongRt = mean(correctTrials.filter(r => !r.isCongruent).map(r => r.rtMs));
+  const congRt = mean(correctTrials.filter(r => r.isCongruent && !r.isNone).map(r => r.rtMs));
+  const incongRt = mean(correctTrials.filter(r => !r.isCongruent && !r.isNone).map(r => r.rtMs));
+  const noneRt = mean(correctTrials.filter(r => r.isNone).map(r => r.rtMs));
   const interferenceMs = (congRt > 0 && incongRt > 0) ? Math.max(0, incongRt - congRt) : 0;
   const score = Math.max(0, correct * 10 - (dataset.length - correct) * 5);
 
@@ -76,6 +118,7 @@ export function aggregateStroop(results = []) {
     meanRtMs,
     congruentMeanRtMs: congRt,
     incongruentMeanRtMs: incongRt,
+    noneMeanRtMs: noneRt,
     interferenceMs,
     score
   };
@@ -130,12 +173,21 @@ export function createStroopTest({
     handleKey(e) {
       if (!active || !currentTrial) return null;
       const key = e.key.toLowerCase();
-      const match = STROOP_COLORS.find(c =>
-        c.key === key ||
-        c.num === key ||
-        c.arrow.toLowerCase() === key ||
-        c.name.toLowerCase() === key
-      );
+      // 1, 2, 3, 4 map to the currently displayed 4 buttonOptions
+      if (['1', '2', '3', '4'].includes(key)) {
+        const idx = Number(key) - 1;
+        if (currentTrial.buttonOptions && currentTrial.buttonOptions[idx]) {
+          e.preventDefault?.();
+          return this.answer(currentTrial.buttonOptions[idx].name);
+        }
+      }
+      // 5, Space, or 'n' maps to 'None'
+      if (key === '5' || key === ' ' || key === 'n') {
+        e.preventDefault?.();
+        return this.answer('None');
+      }
+      // Hotkey matching by first letter of visible buttons
+      const match = currentTrial.buttonOptions?.find(c => c.key === key || c.name.toLowerCase() === key);
       if (match) {
         e.preventDefault?.();
         return this.answer(match.name);
@@ -158,6 +210,10 @@ export function createStroopTest({
 
     isActive() {
       return active;
+    },
+
+    getCurrentTrial() {
+      return currentTrial;
     },
 
     getResults() {

@@ -1,12 +1,44 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.8 (built-in Stroop cognitive stressor, biomechanical FACS face mesh stress vectors, and interference telemetry)  
+**Project version:** v0.7.8 (built-in Stroop with dynamic 7-color rotation, catch trials, sensory feedback, FACS stress vectors, and balanced layout)  
 **Date:** 2026-10-27  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
 
-## v0.7.8 update (2026-10-27): built-in Stroop cognitive stressor, biomechanical FACS face mesh stress vectors, and interference telemetry (feat/stroop-mesh-stress-vectors)
+## v0.7.8 update (2026-10-27): built-in Stroop with dynamic 7-color rotation, catch trials, sensory feedback, FACS stress vectors, and balanced layout (feat/stroop-mesh-stress-vectors)
+
+Changed
+1. `stroop.js`:
+   - 7-color pool with chromatic dissonance: expanded from 4 to 7 colors (`Red`, `Green`, `Blue`, `Yellow`, `Purple`, `Orange`, `Cyan`). Each color defines distinct `inkHex` (electric, high-saturation text display) vs `btnHex` (deeper matte button swatch), preventing subjects from resolving cognitive conflict via trivial RGB pixel matching.
+   - Dynamic 4-color rotation: every trial randomly samples 4 colors from the pool to form the response buttons (`#stroopBtn1` to `#stroopBtn4`).
+   - "None of the above" catch trials: ~20% of trials present an ink color chosen strictly from the 3 colors absent from the buttons, requiring the 5th option (`#stroopBtnNone`, keys `5`, `Space`, or `N`).
+   - Cognitive interference calculation: calculates reaction time delay on incongruent trials (`interferenceMs = incongRt - congRt`), accuracy, and trial count.
+2. `app.js`:
+   - Audio & Haptic sensory feedback:
+     - Sweet success chime: synthesized ascending major triad arpeggio ($G_5 \to C_6 \to E_6$) via clientside Web Audio API with soft exponential decay.
+     - Dual error feedback: `navigator.vibrate([40, 30, 40])` for mobile/haptic trackpads alongside a synthesized 75 Hz low-frequency audio click/thud fallback for desktop Mac users.
+     - Green corner lighting: triggers `.correct-flare` on `#stroopWordBox`.
+   - Dynamic Stroop trial rendering: updates button labels, swatch colors, and click/keybindings dynamically per trial.
+   - Biomechanical FACS Face Mesh: implemented `drawStressMesh(mcx, L, W, H, z, usePulse)` with chromatic AU4/AU7 heatmap, directional corrugator brow furrowing arrows, smile zygomatic pull vectors, and un-mirrored on-canvas HUD badge.
+3. `index.html`:
+   - Layout rebalancing: moved the Facial Affect circumplex card (`#affectCard`) and session action buttons (`#stop`, `#openSummary`, `#exp`) into the left `.cam` column below the video feed, transforming formerly empty space into a functional biosensor and control sidebar.
+   - Stroop modal 5-button interface: updated `#stroopModal` with 4 dynamic color buttons and a 5th full-width neutral button for "None of the above" (`#stroopBtnNone`).
+   - Hero tension chart dimensions: updated trend SVG viewBox to `0 0 600 170` to reduce unnecessary vertical height on laptop screens.
+4. `chart.js`:
+   - Updated trend SVG height `H = 170` (down from `220`), tightening vertical space while maintaining dynamic auto-scaling.
+5. `styles.css`:
+   - Stroop word box corner lighting: added `@keyframes cornerGreenGlow` with radial gradients strictly bounded within the 4 corners of `#stroopWordBox`.
+   - Stroop error shake: added `@keyframes shakeErr` with red border flash.
+   - 7-color button themes: added swatch styles for `.red`, `.green`, `.blue`, `.yellow`, `.purple`, `.orange`, `.cyan`, and neutral `.stroop-none-btn`.
+   - Layout tightening: `.hero-card` padding reduced to `18px 22px 14px;`, `.card` padding to `16px 18px;`, `.row` padding to `5px 0;`. Added `.cam-affect` and `.cam-actions` rules.
+6. `tests/ui.test.mjs`:
+   - Updated Stroop tests to verify 7-color pool, chromatic dissonance between ink and button swatches, catch trial evaluation (`isNone`), hotkeys (`1-4`, `5`), and contract verification for all DOM IDs.
+7. `launcher/`:
+   - Synced assets to `launcher/site/` and verified Go standalone launcher compiles cleanly.
+
+Checked: `node --check app.js ui.js hr.js affect.js voice.js chart.js summary.js stroop.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (33 tests pass); `cd launcher && go build -trimpath -ldflags "-s -w" -o tempo-launcher .`.
+Not checked: multi-subject live behavioral testing; hardware trackpad haptic motor calls in locked-down browser environments; packaged `.dmg` macOS app.
 
 Changed
 1. `stroop.js`:

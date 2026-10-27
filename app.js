@@ -668,13 +668,62 @@ $('openSummary').onclick=showSummary;
 
 // Built-in Stroop cognitive stressor
 let latestStroop=null;
+let sharedAudioCtx=null;
+
+function getSharedAudioCtx(){
+ if(!sharedAudioCtx){
+  const AC=globalThis.AudioContext||globalThis.webkitAudioContext;
+  if(AC)sharedAudioCtx=new AC();
+ }
+ if(sharedAudioCtx&&sharedAudioCtx.state==='suspended')sharedAudioCtx.resume();
+ return sharedAudioCtx;
+}
+
+function playSweetChime(){
+ try{
+  const ac=getSharedAudioCtx();if(!ac)return;
+  const now=ac.currentTime;
+  const notes=[783.99,1046.50,1318.51];
+  notes.forEach((freq,idx)=>{
+   const osc=ac.createOscillator(),gain=ac.createGain();
+   osc.type='sine';
+   osc.frequency.setValueAtTime(freq,now+idx*0.055);
+   gain.gain.setValueAtTime(0.001,now+idx*0.055);
+   gain.gain.exponentialRampToValueAtTime(0.09,now+idx*0.055+0.012);
+   gain.gain.exponentialRampToValueAtTime(0.001,now+idx*0.055+0.32);
+   osc.connect(gain);gain.connect(ac.destination);
+   osc.start(now+idx*0.055);osc.stop(now+idx*0.055+0.33);
+  });
+ }catch(e){}
+}
+
+function playHapticThud(){
+ try{if(typeof navigator!=='undefined'&&navigator.vibrate)navigator.vibrate([40,30,40])}catch(e){}
+ try{
+  const ac=getSharedAudioCtx();if(!ac)return;
+  const now=ac.currentTime,osc=ac.createOscillator(),gain=ac.createGain();
+  osc.type='sine';
+  osc.frequency.setValueAtTime(75,now);
+  osc.frequency.exponentialRampToValueAtTime(32,now+0.045);
+  gain.gain.setValueAtTime(0.18,now);
+  gain.gain.exponentialRampToValueAtTime(0.001,now+0.045);
+  osc.connect(gain);gain.connect(ac.destination);
+  osc.start(now);osc.stop(now+0.05);
+ }catch(e){}
+}
 
 const updateStroopFeedback=ok=>{
  const box=$('stroopWordBox');
  if(!box)return;
- box.classList.remove('err-shake','correct-pulse');
+ box.classList.remove('err-shake','correct-flare');
  void box.offsetWidth;
- box.classList.add(ok?'correct-pulse':'err-shake');
+ if(ok){
+  box.classList.add('correct-flare');
+  playSweetChime();
+ }else{
+  box.classList.add('err-shake');
+  playHapticThud();
+ }
 };
 
 const updateStroopStats=resList=>{
@@ -685,13 +734,38 @@ const updateStroopStats=resList=>{
  if(rt)rt.textContent=agg.meanRtMs?`${agg.meanRtMs} ms`:'–';
 };
 
+const renderStroopTrial=(trial,trialIndex)=>{
+ const word=$('stroopWord');
+ if(word){
+  word.textContent=trial.word;
+  word.style.color=trial.inkHex||trial.colorHex;
+ }
+ const tr=$('stroopTrialNum');
+ if(tr)tr.textContent=trialIndex+1;
+
+ if(trial.buttonOptions){
+  trial.buttonOptions.forEach((opt,idx)=>{
+   const btn=$(`stroopBtn${idx+1}`);
+   if(btn){
+    btn.className=`stroop-btn ${opt.class||''}`;
+    const nameEl=btn.querySelector('.sname');
+    if(nameEl)nameEl.textContent=opt.name;
+    btn.onclick=()=>{
+     const res=stroopTest.answer(opt.name);
+     if(res){
+      updateStroopFeedback(res.ok);
+      updateStroopStats(stroopTest.getResults());
+     }
+    };
+   }
+  });
+ }
+};
+
 export const stroopTest=createStroopTest({
  durationS:60,
  onTrial(trial,trialIndex){
-  const word=$('stroopWord');
-  if(word){word.textContent=trial.word;word.style.color=trial.colorHex}
-  const tr=$('stroopTrialNum');
-  if(tr)tr.textContent=trialIndex+1;
+  renderStroopTrial(trial,trialIndex);
  },
  onTick(remainingS,totalS){
   const s=$('stroopSecs');
@@ -713,6 +787,17 @@ export const stroopTest=createStroopTest({
   toast(`Stroop challenge complete (${summary.trials} trials, ${summary.accuracy}% accuracy). Check in to rate your stress.`);
  }
 });
+
+const btnNone=$('stroopBtnNone');
+if(btnNone){
+ btnNone.onclick=()=>{
+  const res=stroopTest.answer('None');
+  if(res){
+   updateStroopFeedback(res.ok);
+   updateStroopStats(stroopTest.getResults());
+  }
+ };
+}
 
 const btnStroop=$('btnStroop');
 if(btnStroop){
@@ -740,19 +825,6 @@ if(stroopStartBtn){
   stroopTest.start();
  };
 }
-
-['Red','Green','Blue','Yellow'].forEach(color=>{
- const btn=$(`stroopBtn${color}`);
- if(btn){
-  btn.onclick=()=>{
-   const res=stroopTest.answer(color);
-   if(res){
-    updateStroopFeedback(res.ok);
-    updateStroopStats(stroopTest.getResults());
-   }
-  };
- }
-});
 
 document.addEventListener('keydown',e=>{
  const modal=$('stroopModal');

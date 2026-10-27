@@ -125,7 +125,42 @@
    <span class="signal-chip"><i class="dot" id="dPose"></i>Posture</span>
    <span class="signal-chip"><i class="dot" id="dVoice"></i>Voice</span>
   </div>
-  <p class="dusk small" style="margin-top:10px">Processed on this device. Nothing is recorded.</p>
+  <p class="dusk small" style="margin-top:6px;margin-bottom:12px">Processed on this device. Nothing is recorded.</p>
+
+  <div class="tile-card cam-affect tint-teal" id="affectCard">
+   <div class="tile-head">
+    <p class="eyebrow">Facial Affect</p>
+    <div class="tile-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
+   </div>
+   <div class="af-wrap">
+    <svg class="af-svg" id="afPlot" viewBox="0 0 100 100" aria-hidden="true">
+     <line x1="50" y1="6" x2="50" y2="94"/>
+     <line x1="6" y1="50" x2="94" y2="50"/>
+     <text x="24" y="20">Tense</text><text x="76" y="20">Engaged</text>
+     <text x="24" y="84">Subdued</text><text x="76" y="84">Calm</text>
+     <g id="afTrail"></g>
+     <circle id="afDot" cx="50" cy="50" r="4.5"/>
+    </svg>
+    <div class="af-stats">
+     <div>Valence: <b id="v_valence">–</b></div>
+     <div>Arousal: <b id="v_arousal">–</b></div>
+     <span class="af-label" id="v_affect">–</span>
+    </div>
+   </div>
+   <div class="tile-foot">FACS circumplex projection, unvalidated</div>
+  </div>
+
+  <div class="cam-actions">
+   <button class="btn ghost btn-sm" id="openSummary" type="button" title="View session summary">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+    Summary
+   </button>
+   <button class="btn ghost btn-sm" id="exp" type="button" title="Export session CSV">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg>
+    Export CSV
+   </button>
+   <button class="btn danger btn-sm" id="stop" type="button">Stop</button>
+  </div>
  </div>
  <div>
   <div id="setup">
@@ -183,9 +218,9 @@
     </div>
     <p class="dusk small">Facial tension compared with your own baseline. Experimental: the weights come from the literature and are not yet validated.</p>
     <div class="trendwrap">
-     <svg id="trend" class="trend" viewBox="0 0 600 220" role="img" aria-label="Facial tension over the last 3 minutes">
+     <svg id="trend" class="trend" viewBox="0 0 600 170" role="img" aria-label="Facial tension over the last 3 minutes">
       <defs>
-       <linearGradient id="trendStroke" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="220">
+       <linearGradient id="trendStroke" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="170">
         <stop offset="0"/><stop offset=".25"/><stop offset=".5"/><stop offset=".75"/><stop offset="1"/>
        </linearGradient>
       </defs>
@@ -211,29 +246,6 @@
      <div class="pulse-sub"><b id="hrvNum">–</b> ms HRV</div>
      <div class="tile-foot" id="hrNote">looking for pulse</div>
      <p class="pulse-tip small" id="lightTip" hidden></p>
-    </div>
-
-    <div class="tile-card tint-teal" id="affectCard">
-     <div class="tile-head">
-      <p class="eyebrow">Facial Affect</p>
-      <div class="tile-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></div>
-     </div>
-     <div class="af-wrap">
-      <svg class="af-svg" id="afPlot" viewBox="0 0 100 100" aria-hidden="true">
-       <line x1="50" y1="6" x2="50" y2="94"/>
-       <line x1="6" y1="50" x2="94" y2="50"/>
-       <text x="24" y="20">Tense</text><text x="76" y="20">Engaged</text>
-       <text x="24" y="84">Subdued</text><text x="76" y="84">Calm</text>
-       <g id="afTrail"></g>
-       <circle id="afDot" cx="50" cy="50" r="4.5"/>
-      </svg>
-      <div class="af-stats">
-       <div>Valence: <b id="v_valence">–</b></div>
-       <div>Arousal: <b id="v_arousal">–</b></div>
-       <span class="af-label" id="v_affect">–</span>
-      </div>
-     </div>
-     <div class="tile-foot">FACS blendshape projection, unvalidated</div>
     </div>
 
     <div class="tile-card tint-purple" id="guna" hidden>
@@ -284,18 +296,6 @@
     <p class="dusk small" id="affectBox" style="margin-top:12px">Facial affect (FACS blendshape projection, unvalidated): Valence and arousal are projected from facial blendshapes.</p>
     <p class="dusk small" style="margin-top:8px">Camera analysis: <b id="fpsNum">–</b> fps · Display refresh 4 Hz</p>
    </details>
-
-   <div class="foot col-12">
-    <button class="btn danger" id="stop">Stop camera</button>
-    <button class="btn ghost" id="openSummary">
-     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-     Session summary
-    </button>
-    <button class="btn ghost" id="exp">
-     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4m4-5 5 5 5-5m-5 5V3"/></svg>
-     Export CSV
-    </button>
-   </div>
   </div>
  </div>
 </section>
@@ -371,12 +371,10 @@
 
   <div class="stroop-stage" id="stroopStage">
    <div class="stroop-intro" id="stroopIntro">
-    <p class="lede" style="font-size:15px;line-height:22px;margin-bottom:16px">The Stroop effect tests cognitive conflict by presenting color names written in conflicting ink colors. Identify the ink color as fast as you can without making errors.</p>
+    <p class="lede" style="font-size:15px;line-height:22px;margin-bottom:16px">The Stroop effect tests cognitive conflict. Identify the <b>font ink color</b> as fast as you can. The 4 button choices rotate dynamically every trial. If the font color is not among the 4 buttons, choose <b>None of the above</b>.</p>
     <div class="stroop-keys-guide">
-     <span><kbd>1</kbd> · <kbd>R</kbd> Red</span>
-     <span><kbd>2</kbd> · <kbd>G</kbd> Green</span>
-     <span><kbd>3</kbd> · <kbd>B</kbd> Blue</span>
-     <span><kbd>4</kbd> · <kbd>Y</kbd> Yellow</span>
+     <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> Rotating 4 colors</span>
+     <span><kbd>5</kbd> · <kbd>Space</kbd> None of the above</span>
     </div>
     <div class="act" style="margin-top:20px">
      <button class="btn btn-full" id="stroopStartBtn">Start 60 s Challenge</button>
@@ -388,11 +386,16 @@
     <div class="stroop-word-box" id="stroopWordBox">
      <span class="stroop-word" id="stroopWord">READY</span>
     </div>
-    <div class="stroop-buttons">
-     <button class="stroop-btn red" id="stroopBtnRed" type="button" data-color="Red"><span class="kbadge">1 · R</span>Red</button>
-     <button class="stroop-btn green" id="stroopBtnGreen" type="button" data-color="Green"><span class="kbadge">2 · G</span>Green</button>
-     <button class="stroop-btn blue" id="stroopBtnBlue" type="button" data-color="Blue"><span class="kbadge">3 · B</span>Blue</button>
-     <button class="stroop-btn yellow" id="stroopBtnYellow" type="button" data-color="Yellow"><span class="kbadge">4 · Y</span>Yellow</button>
+    <div class="stroop-buttons-grid">
+     <div class="stroop-color-row">
+      <button class="stroop-btn" id="stroopBtn1" type="button"><span class="kbadge">1</span><span class="sname">Red</span></button>
+      <button class="stroop-btn" id="stroopBtn2" type="button"><span class="kbadge">2</span><span class="sname">Green</span></button>
+      <button class="stroop-btn" id="stroopBtn3" type="button"><span class="kbadge">3</span><span class="sname">Blue</span></button>
+      <button class="stroop-btn" id="stroopBtn4" type="button"><span class="kbadge">4</span><span class="sname">Yellow</span></button>
+     </div>
+     <button class="stroop-btn stroop-none-btn" id="stroopBtnNone" type="button">
+      <span class="kbadge">5 · Space</span>None of the above
+     </button>
     </div>
     <div class="stroop-live-stats">
      <span>Trial: <b id="stroopTrialNum">0</b></span>
@@ -421,6 +424,6 @@
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=0.7.7"></script>
+<script type="module" src="app.js?v=0.7.8"></script>
 </body>
 </html>
