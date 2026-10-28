@@ -1,5 +1,5 @@
 // ui.js: small DOM helpers for the Tempo portal. No camera or MediaPipe code, so Node + jsdom can test it.
-import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.7.5';
+import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.7.9';
 export const $ = id => document.getElementById(id);
 export const stage = n => { document.body.dataset.stage = n; };
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -178,8 +178,13 @@ export function openDialog(d) {
 
 export function closeDialog(d) {
   if (!d) return;
-  if (typeof d.close === 'function') d.close();
-  else d.removeAttribute('open');
+  if (typeof d.close === 'function' && d.open) {
+    try { d.close(); } catch (e) { d.removeAttribute('open'); }
+  } else {
+    d.removeAttribute('open');
+    const Ev = d.ownerDocument?.defaultView?.Event || globalThis.window?.Event;
+    if (Ev) try { d.dispatchEvent(new Ev('close')); } catch (e) {}
+  }
 }
 
 export function setupDialogDismiss(d) {
@@ -268,6 +273,27 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     } else {
       sumStroop.hidden = true;
       sumStroop.innerHTML = '';
+    }
+  }
+
+  // Guided breathing recovery result
+  const sumBreathe = $('sumBreathe');
+  if (sumBreathe) {
+    if (meta.breathe && meta.breathe.durationS > 0) {
+      sumBreathe.hidden = false;
+      sumBreathe.innerHTML = `
+        <div class="sumstroop-title" style="color:var(--teal)">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2m0 14v2m-9-9h2m14 0h2"/></svg>
+          Parasympathetic Recovery: ${meta.breathe.patternName || 'Guided Breathing'}
+        </div>
+        <div>
+          <b>${meta.breathe.durationS} s</b> practiced ·
+          <b>${meta.breathe.cyclesCompleted || 0}</b> complete breath cycle(s)
+        </div>
+      `;
+    } else {
+      sumBreathe.hidden = true;
+      sumBreathe.innerHTML = '';
     }
   }
 

@@ -19,6 +19,8 @@ jobs:
       - run: node --check voice.js
       - run: node --check chart.js
       - run: node --check summary.js
+      - run: node --check stroop.js
+      - run: node --check breathe.js
       - run: node --test tests/ui.test.mjs tests/hr.test.mjs
       - uses: actions/setup-python@v5
         with:

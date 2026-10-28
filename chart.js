@@ -91,14 +91,14 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
   let rafId = null;
   let ro = null;
   let running = false;
-  let W = 600, H = 170;
+  let W = 600, H = 140;
 
   const $id = id => svg ? (svg.getElementById?.(id) || svg.ownerDocument?.getElementById?.(id)) : null;
 
   function updateSize() {
     if (svg?.parentElement?.clientWidth) {
       W = Math.max(300, svg.parentElement.clientWidth);
-      H = 170;
+      H = 140;
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     }
   }

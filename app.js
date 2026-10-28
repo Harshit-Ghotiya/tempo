@@ -1,11 +1,12 @@
-// Tempo v0.7.8: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
-import {createTracker,isSkin} from './hr.js?v=0.7.8';
-import {initAffect,evalAffect} from './affect.js?v=0.7.8';
-import {createVoiceMonitor} from './voice.js?v=0.7.8';
-import {createTrend,ema} from './chart.js?v=0.7.8';
-import {phaseStats,directionChecks} from './summary.js?v=0.7.8';
-import {createStroopTest,aggregateStroop} from './stroop.js?v=0.7.8';
-import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.8';
+// Tempo v0.7.9: on-device stress-signal portal and study data collection. Everything runs on-device; only derived numbers are shown or exported.
+import {createTracker,isSkin} from './hr.js?v=0.7.9';
+import {initAffect,evalAffect} from './affect.js?v=0.7.9';
+import {createVoiceMonitor} from './voice.js?v=0.7.9';
+import {createTrend,ema} from './chart.js?v=0.7.9';
+import {phaseStats,directionChecks} from './summary.js?v=0.7.9';
+import {createStroopTest,aggregateStroop} from './stroop.js?v=0.7.9';
+import {createBreathingCoach,BREATHE_PATTERNS} from './breathe.js?v=0.7.9';
+import {$,stage,toast,tweenNum,drawSpark,buildRows,setRow,setDot,ring,initRate,resetRate,touched,drawer,initTheme,lightOf,lightTip,hrView,hrvShown,openDialog,closeDialog,setupDialogDismiss,renderSummary} from './ui.js?v=0.7.9';
 // MediaPipe code and models come from the Tempo launcher (same origin, offline after the first run).
 // Without the launcher (for example python -m http.server) they fall back to the public CDN and Google's model host.
 const CDN="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14",GCS="https://storage.googleapis.com/mediapipe-models/",
@@ -21,7 +22,7 @@ const AU=[['browLower','bL'],['browRaise','bR'],['lidTight','lt'],['eyeWide','ew
 const FEAT=Object.fromEntries([...AU.map(([k])=>[k,'face']),...['expressivity','blink','gaze','headMove'].map(k=>[k,'face']),['hr','rppg'],['hrv','rppg'],['shrug','pose'],['sway','pose'],['fidget','pose']]);
 // Smallest spread a baseline may have. Without it, blendshape scores near zero make ordinary movement look extreme
 // (the old lip feature sat at the +-3 clip in 48% of windows in the first real session).
-const FLOOR={browLower:.03,browRaise:.012,lidTight:.03,eyeWide:.004,lipTight:.004,lipDown:.002,smile:.04,expressivity:.01,blink:4.5,gaze:.03,headMove:.18,hr:3,hrv:5,shrug:.02,sway:.08,fidget:.1};
+const FLOOR={browLower:.03,browRaise:.012,lidTight:.03,eyeWide:.004,lipTight:.004,lipDown:.002,smile:.04,expressivity:.01,blink:7.0,gaze:.03,headMove:.18,hr:3,hrv:5,shrug:.02,sway:.08,fidget:.1};
 // Facial tension index: weights on baseline z-scores, positive = more tension. Literature-based priors, not fitted or validated.
 // v0.7.7: eye tightening leads (rose in the stressor in all three P001 sessions); brow lowering is halved because it moves
 // with head pitch and screen position (Reddit scrolling read higher than mental maths in S03); blink is negative because
@@ -112,11 +113,12 @@ async function init(){
  if(!pose&&use.pose)pose=await mk(PoseLandmarker,A.model('pose_landmarker_lite.task'),{numPoses:1});
 }
 
+let rAFId=null;
 function loop(){
  if(!running)return;
  const v=$('cam'),t=performance.now();
  if(v.readyState>=2&&v.currentTime!==lastT){lastT=v.currentTime;frame(v,t)}
- requestAnimationFrame(loop);
+ rAFId=requestAnimationFrame(loop);
 }
 
 export const MESH_PTS=[70,63,105,66,107,336,296,334,293,300,33,160,158,133,153,144,362,385,387,263,373,380,468,473,1,2,98,327,168,6,197,195,5,4,61,146,91,181,84,17,314,405,321,375,291,185,40,39,37,0,267,269,270,409,10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
@@ -212,6 +214,8 @@ function frame(v,t){
     o.gx=open?((p.x-L[33].x)/(L[133].x-L[33].x)+(q.x-L[362].x)/(L[263].x-L[362].x))/2:NaN;
     o.gy=open?((p.y-L[159].y)/(L[145].y-L[159].y)+(q.y-L[386].y)/(L[374].y-L[386].y))/2:NaN;
     const iod=Math.hypot(L[33].x-L[263].x,L[33].y-L[263].y);o.nx=L[1].x/iod;o.ny=L[1].y/iod;
+    const midEyeY=(L[33].y+L[263].y)/2;
+    o.pitch=iod>0?(L[1].y-midEyeY)/iod:0;
    }
    if(use.pulse){ // mean skin RGB over forehead + both cheeks (hair, glasses and glare rejected)
     const W=v.videoWidth,H=v.videoHeight;if(cv.width!==W){cv.width=W;cv.height=H}
@@ -265,12 +269,14 @@ function feats(winS=WIN_S,{pulse=true}={}){
  if(use.face&&Fo.length>Math.max(20,6*winS)){
   q.face=Fo.length/F.length;
   const B=fbuf.filter(o=>o.ok&&o.bl!==undefined),span=B.length?(B[B.length-1].t-B[0].t)/6e4:0; // blinks use the 30 s buffer
-  if(span>8/60){let c=0,s=0;for(const o of B){if(!s&&o.bl>.5){s=1;c++}else if(s&&o.bl<.3)s=0}x.blink=c/span}
+  if(span>8/60){let c=0,s=0;for(const o of B){if(!s&&o.bl>.40){s=1;c++}else if(s&&o.bl<.25)s=0}x.blink=c/span}
   for(const [k,f] of AU)x[k]=mean(Fo.map(o=>o[f]));                     // sustained level of each action-unit composite
   x.expressivity=mean(AU.map(([,f])=>sd(Fo.map(o=>o[f]))));              // how much the face moves overall
   x.perclos=mean(Fo.map(o=>+(o.bl>.8)));                                 // exported raw, not modelled
   x.gaze=Math.hypot(sd(fin(Fo.map(o=>o.gx))),sd(fin(Fo.map(o=>o.gy))));
   x.headMove=Math.hypot(sd(Fo.map(o=>o.nx)),sd(Fo.map(o=>o.ny)));
+  const ps=fin(Fo.map(o=>o.pitch));if(ps.length)x.pitch=mean(ps);
+  const gys=fin(Fo.map(o=>o.gy));if(gys.length)x.gy=mean(gys);
  }
  const P=pbuf.filter(o=>o.t>now-winS*1e3),Po=P.filter(o=>o.ok);
  if(use.pose&&Po.length>Math.max(6,1.5*winS)){
@@ -338,11 +344,20 @@ export function makeBase(calObj){
  return b;
 }
 
-export function tensionOf(z,qFace){
+export function tensionOf(z,qFace,downLook=0){
  const zs=Object.keys(TENSION).filter(k=>z[k]!=null);
  if((qFace??0)<MIN_Q||zs.length<4)return null;
  const den=zs.reduce((s,k)=>s+Math.abs(TENSION[k]),0);
- return den?zs.reduce((s,k)=>s+TENSION[k]*z[k],0)/den:null;
+ if(!den)return null;
+ const attenFactor=Math.max(0,1-0.65*Math.min(1,downLook));
+ const sum=zs.reduce((s,k)=>{
+  let val=z[k];
+  if(downLook>0&&(k==='lidTight'||k==='lipTight'||k==='browLower')){
+   if(val>0)val*=attenFactor;
+  }
+  return s+TENSION[k]*val;
+ },0);
+ return sum/den;
 }
 
 const EDGES=[-0.75,0.75,1.5],
@@ -376,6 +391,8 @@ function liveTick(){
    for(const k in x){
     if((FEAT[k]==='face'||FEAT[k]==='pose')&&(q[FEAT[k]]??0)>MIN_Q){
      (calFast[k]??=[]).push(x[k]);
+    }else if((k==='pitch'||k==='gy')&&(q.face??0)>MIN_Q){
+     (calFast[k]??=[]).push(x[k]);
     }
    }
   }
@@ -383,14 +400,21 @@ function liveTick(){
  }
  baseFast??=makeBase(calFast);
  const z={};
- for(const k in x)if(baseFast[k])z[k]=Math.max(-3,Math.min(3,(x[k]-baseFast[k].m)/baseFast[k].s));
- const raw=tensionOf(z,q.face);
+ for(const k in x)if(FEAT[k]&&baseFast[k])z[k]=Math.max(-3,Math.min(3,(x[k]-baseFast[k].m)/baseFast[k].s));
+ const pitchD=(x.pitch!=null&&baseFast.pitch)?(x.pitch-baseFast.pitch.m):0;
+ const gyD=(x.gy!=null&&baseFast.gy)?(x.gy-baseFast.gy.m):0;
+ const downLookFast=Math.max(0,Math.min(1,pitchD>0.06?pitchD/0.16:gyD>0.05?gyD/0.14:0));
+ const raw=tensionOf(z,q.face,downLookFast);
  fast=raw===null?null:fast===null?raw:fast+ema(dt,TAU_S)*(raw-fast);
  trend.push(el,fast);
  renderState(fast);
  for(const [k] of [...ROWS.face,...ROWS.pose]){
   if(z[k]!=null){
-   zSmooth[k]=zSmooth[k]==null?z[k]:zSmooth[k]+ema(dt,1.5)*(z[k]-zSmooth[k]);
+   let zk=z[k];
+   if(downLookFast>0&&zk>0&&(k==='lidTight'||k==='lipTight'||k==='browLower')){
+    zk*=Math.max(0,1-0.65*Math.min(1,downLookFast));
+   }
+   zSmooth[k]=zSmooth[k]==null?zk:zSmooth[k]+ema(dt,1.5)*(zk-zSmooth[k]);
    setRow(k,x[k],zSmooth[k]);
   }else setRow(k,x[k],null);
  }
@@ -472,13 +496,13 @@ function nudge(on){
 
 function chime(){
  try{
-  const AC=globalThis.AudioContext||globalThis.webkitAudioContext;if(!AC)return;
-  const ac=new AC(),now=ac.currentTime,o1=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
+  const ac=getSharedAudioCtx();if(!ac)return;
+  const now=ac.currentTime,o1=ac.createOscillator(),o2=ac.createOscillator(),g=ac.createGain();
   o1.frequency.value=523.25;o2.frequency.value=659.25;
   g.gain.setValueAtTime(0.08,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.8);
   o1.connect(g);o2.connect(g);g.connect(ac.destination);
+  o1.onended=()=>{try{o1.disconnect();o2.disconnect();g.disconnect()}catch(e){}};
   o1.start(now);o2.start(now);o1.stop(now+0.8);o2.stop(now+0.8);
-  setTimeout(()=>ac.close(),1000);
  }catch(e){}
 }
 
@@ -489,7 +513,7 @@ function tick(){
  const f2s=fbuf.filter(o=>o.t>performance.now()-2000).length,fps=f2s/2;
  if(!pre&&fps<MIN_FPS)hiddenAt=el;
  const ws=Math.max(0,el-WIN_S),fs0=el-LOOKBACK_S,inside=!pre&&fs0>=phaseStart&&fs0>hiddenAt; // features look back up to LOOKBACK_S
- let z={},ps={},all=null,ag=null,tn=null,af=null,light=null,tip=null;
+ let z={},ps={},all=null,ag=null,tn=null,af=null,light=null,tip=null,downLook=0;
  if(use.pulse){
   light=lightOf(rgb,performance.now());
   tip=lightTip(light);
@@ -498,7 +522,12 @@ function tick(){
  }
  if(pre){
   // Baseline only from settled, good-quality windows: the first seconds of a session are mostly movement.
-  if(el>=SETTLE_S+WIN_S)for(const k in x)if(FEAT[k]&&(q[FEAT[k]]??0)>MIN_Q)(cal[k]??=[]).push(x[k]);
+  if(el>=SETTLE_S+WIN_S){
+   for(const k in x){
+    if(FEAT[k]&&(q[FEAT[k]]??0)>MIN_Q)(cal[k]??=[]).push(x[k]);
+    else if((k==='pitch'||k==='gy')&&(q.face??0)>MIN_Q)(cal[k]??=[]).push(x[k]);
+   }
+  }
   setup(el,x,q,tip);
  }else{
   if(document.body.dataset.stage==='setup'){stage('live');toast('Baseline set. You are live.');trend.mark(el,'baseline')}
@@ -519,9 +548,12 @@ function tick(){
   const CORE_FACE=['browLower','lidTight','smile','expressivity'];
   const miss=CORE_FACE.filter(k=>use.face&&!base[k]);
   $('st').textContent=miss.length?`Face calibration incomplete (${miss.join(', ')}). Check lighting and framing, then restart setup.`:'';
-  for(const k in x)if(base[k])z[k]=Math.max(-3,Math.min(3,(x[k]-base[k].m)/base[k].s));
+  for(const k in x)if(FEAT[k]&&base[k])z[k]=Math.max(-3,Math.min(3,(x[k]-base[k].m)/base[k].s));
   // Facial tension index: needs a usable face signal and at least 4 features with a baseline; smoothed so it does not flicker.
-  const raw=tensionOf(z,q.face);
+  const pitchDelta=(x.pitch!=null&&base.pitch)?(x.pitch-base.pitch.m):0;
+  const gyDelta=(x.gy!=null&&base.gy)?(x.gy-base.gy.m):0;
+  downLook=Math.max(0,Math.min(1,pitchDelta>0.06?pitchDelta/0.16:gyDelta>0.05?gyDelta/0.14:0));
+  const raw=tensionOf(z,q.face,downLook);
   tensionS=raw===null?null:tensionS===null?raw:tensionS+.3*(raw-tensionS);tn=tensionS;
   if(q.face>=MIN_Q)af=evalAffect(x,z);
   if(DEMO_GUNA||trained){
@@ -559,6 +591,8 @@ function tick(){
   transition:!pre&&!inside,tension_idx:tn??'',tension_fast:fast==null?'':+fast.toFixed(3),valence:af?+af.valence.toFixed(3):'',arousal:af?+af.arousal.toFixed(3):'',
   skin_luma:light?+light.luma.toFixed(1):'',skin_rg:light?+light.rg.toFixed(2):'',hr_baseline_late:hrLate,
   stroop_active:stroopTest?.isActive?.()?1:0,
+  breathe_active:breatheCoach?.isActive?.()?1:0,
+  down_look:+downLook.toFixed(2),
   fps:+fps.toFixed(1),tab_hidden:document.hidden,
   ...x,...Object.fromEntries(Object.entries(z).map(([k,v])=>['z_'+k,v])),
   ...(all?{p_sattva:all.sattva,p_rajas:all.rajas,p_tamas:all.tamas}:{}),
@@ -567,13 +601,19 @@ function tick(){
 }
 
 // Phase control and check-in drawer
+function syncPhaseButtons(ph=phaseNow()){
+ const s=$('btnStroop'),b=$('btnBreathe');
+ if(s){s.hidden=ph!=='stressor';s.classList.toggle('active-hint',ph==='stressor')}
+ if(b){b.hidden=ph!=='recovery';b.classList.toggle('active-hint',ph==='recovery')}
+}
 $('phaseSeg').addEventListener('change',()=>{
+ const ph=phaseNow();
  phaseStart=Math.max(CAL_END,(performance.now()-start)/1e3);
- $('reportPhase').textContent=PHASE[phaseNow()];
- trend.mark(phaseStart,phaseNow());
+ $('reportPhase').textContent=PHASE[ph];
+ trend.mark(phaseStart,ph);
  guidedPrompted=false;nudge(false);
- $('btnStroop')?.classList.toggle('active-hint',phaseNow()==='stressor');
- toast(`Phase: ${PHASE[phaseNow()]}. Check in at its end, before you switch.`);
+ syncPhaseButtons(ph);
+ toast(`Phase: ${PHASE[ph]}. Check in at its end, before you switch.`);
 });
 const closeDrawer=()=>drawer(false);
 $('openReport').onclick=()=>{$('reportMsg').textContent='';drawer(true)};
@@ -610,8 +650,11 @@ $('go').onclick=async()=>{
  $('msg').textContent='Starting the camera and loading models. The very first run downloads two small model files, which can take a minute.';
  let userAudioCtx=null;
  try{
-  const AC=globalThis.AudioContext||globalThis.webkitAudioContext;
-  if(AC){userAudioCtx=new AC();if(userAudioCtx.state==='suspended')userAudioCtx.resume();}
+  if(use.voice){
+   const AC=globalThis.AudioContext||globalThis.webkitAudioContext;
+   if(AC){userAudioCtx=new AC();if(userAudioCtx.state==='suspended')userAudioCtx.resume?.().catch?.(()=>{});}
+  }
+  getSharedAudioCtx();
  }catch(e){}
  try{
   stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,frameRate:30},audio:use.voice});
@@ -621,30 +664,39 @@ $('go').onclick=async()=>{
   $('msg').textContent='Could not start: '+e.message+'. Allow camera access in the browser. If this is the first run, connect to the internet once so the models can download.';
   goBtn.disabled=false;
   goBtn.textContent='Start setup';
+  if(userAudioCtx)try{userAudioCtx.close().catch(()=>{})}catch(err){}
   if(stream)stream.getTracks().forEach(t=>t.stop());return;
  }
  clock.stop();
- fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;hiddenAt=-1;
+ if(rAFId){cancelAnimationFrame(rAFId);rAFId=null}
+ fbuf=[];pbuf=[];rgb=[];cal={};log=[];tracker=createTracker();base=null;pw=null;hiddenAt=-1;lastT=-1;fc=0;voice=null;
  calFast={};baseFast=null;fast=null;lastLive=0;zoneIdx=null;afTrailPts=[];
- lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};nudge(false);latestStroop=null;$('btnStroop')?.classList.remove('active-hint');
+ lastHr=null;lastHrv=null;calLate={hr:[],hrv:[]};hrLate=false;guidedPrompted=false;zSmooth={};nudge(false);
+ latestStroop=null;latestBreathe=null;
+ syncPhaseButtons('baseline');
  if(vmon)vmon.stop();vmon=use.voice?createVoiceMonitor(stream,(p,q)=>window.setVoice(p,q),userAudioCtx):null;
  reports=[];tensionS=null;phaseStart=CAL_END;
  renderState(null);
+ for(const [k] of [...ROWS.face,...ROWS.pose])setRow(k,null,null);
  const trail=$('afTrail');if(trail)trail.innerHTML='';
  const dot=$('afDot');if(dot){dot.setAttribute('cx','50');dot.setAttribute('cy','50')}
  const tipEl=$('lightTip');if(tipEl)tipEl.hidden=true;
  const agoEl=$('hrAgo');if(agoEl)agoEl.textContent='';
+ $('st').textContent='';
  trend.reset();trend.start(()=>(performance.now()-start)/1e3);
  document.querySelector('input[name=phase][value=baseline]').checked=true;$('reportPhase').textContent='Baseline';
  $('who').textContent=`${participantId} (${sessionId})`;$('cam').classList.add('on');
  stage('setup');
  goBtn.textContent='Start setup';
- start=performance.now();running=true;lastTickAt=lastLiveAt=start;loop();clock.start();
+ start=performance.now();running=true;lastTickAt=lastLiveAt=lastBgFrame=start;loop();clock.start();
 };
 
 $('stop').onclick=()=>{
- running=false;clock.stop();trend.stop();nudge(false);stroopTest?.stop?.();$('btnStroop')?.classList.remove('active-hint');
- if(vmon){vmon.stop();vmon=null}if(stream)stream.getTracks().forEach(t=>t.stop());
+ running=false;clock.stop();if(rAFId){cancelAnimationFrame(rAFId);rAFId=null}
+ trend.stop();nudge(false);stroopTest?.stop?.();breatheCoach?.stop?.();
+ $('btnStroop')?.classList.remove('active-hint');$('btnBreathe')?.classList.remove('active-hint');
+ if(document.pictureInPictureElement)document.exitPictureInPicture().catch(()=>{});
+ if(vmon){vmon.stop();vmon=null}if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
  const mcv=$('meshCv');mcv?.getContext?.('2d')?.clearRect(0,0,mcv.width||640,mcv.height||480);
  $('cam').srcObject=null;$('cam').classList.remove('on');
  $('st').textContent='Camera stopped. Export your data, or reload the page to start again.';$('win').textContent='stopped';$('win').dataset.ok='0';
@@ -656,7 +708,7 @@ const showSummary=()=>{
  const dur=start?(performance.now()-start)/1e3:0;
  const stats=phaseStats(log,reports);
  const checks=directionChecks(stats);
- renderSummary(stats,checks,log,{participantId,sessionId,durationS:dur,reportCount:reports.length,stroop:latestStroop});
+ renderSummary(stats,checks,log,{participantId,sessionId,durationS:dur,reportCount:reports.length,stroop:latestStroop,breathe:latestBreathe});
  openDialog($('summary'));
 };
 
@@ -671,11 +723,11 @@ let latestStroop=null;
 let sharedAudioCtx=null;
 
 function getSharedAudioCtx(){
- if(!sharedAudioCtx){
+ if(!sharedAudioCtx||sharedAudioCtx.state==='closed'){
   const AC=globalThis.AudioContext||globalThis.webkitAudioContext;
   if(AC)sharedAudioCtx=new AC();
  }
- if(sharedAudioCtx&&sharedAudioCtx.state==='suspended')sharedAudioCtx.resume();
+ if(sharedAudioCtx&&sharedAudioCtx.state==='suspended')sharedAudioCtx.resume?.().catch?.(()=>{});
  return sharedAudioCtx;
 }
 
@@ -692,6 +744,7 @@ function playSweetChime(){
    gain.gain.exponentialRampToValueAtTime(0.09,now+idx*0.055+0.012);
    gain.gain.exponentialRampToValueAtTime(0.001,now+idx*0.055+0.32);
    osc.connect(gain);gain.connect(ac.destination);
+   osc.onended=()=>{try{osc.disconnect();gain.disconnect()}catch(e){}};
    osc.start(now+idx*0.055);osc.stop(now+idx*0.055+0.33);
   });
  }catch(e){}
@@ -708,6 +761,7 @@ function playHapticThud(){
   gain.gain.setValueAtTime(0.18,now);
   gain.gain.exponentialRampToValueAtTime(0.001,now+0.045);
   osc.connect(gain);gain.connect(ac.destination);
+  osc.onended=()=>{try{osc.disconnect();gain.disconnect()}catch(e){}};
   osc.start(now);osc.stop(now+0.05);
  }catch(e){}
 }
@@ -788,23 +842,12 @@ export const stroopTest=createStroopTest({
  }
 });
 
-const btnNone=$('stroopBtnNone');
-if(btnNone){
- btnNone.onclick=()=>{
-  const res=stroopTest.answer('None');
-  if(res){
-   updateStroopFeedback(res.ok);
-   updateStroopStats(stroopTest.getResults());
-  }
- };
-}
-
 const btnStroop=$('btnStroop');
 if(btnStroop){
  btnStroop.onclick=()=>{
   if(running&&phaseNow()!=='stressor'){
    const r=document.querySelector('input[name=phase][value=stressor]');
-   if(r){r.checked=true;r.dispatchEvent(new Event('change'))}
+   if(r){r.checked=true;const Ev=r.ownerDocument?.defaultView?.Event||Event;r.dispatchEvent(new Ev('change',{bubbles:true}))}
   }
   const intro=$('stroopIntro'),act=$('stroopActive'),sum=$('stroopSummary'),sec=$('stroopSecs');
   if(intro)intro.hidden=false;
@@ -822,6 +865,9 @@ if(stroopStartBtn){
   if(intro)intro.hidden=true;
   if(act)act.hidden=false;
   if(sum)sum.hidden=true;
+  updateStroopStats([]);
+  const box=$('stroopWordBox');
+  if(box)box.classList.remove('err-shake','correct-flare');
   stroopTest.start();
  };
 }
@@ -838,6 +884,7 @@ document.addEventListener('keydown',e=>{
 });
 
 setupDialogDismiss($('stroopModal'));
+$('stroopModal')?.addEventListener('close',()=>stroopTest.stop());
 const stroopClose=$('stroopClose');
 if(stroopClose){
  stroopClose.onclick=()=>{
@@ -854,6 +901,110 @@ if(stroopCheckinBtn){
   $('openReport')?.click();
  };
 }
+
+// Guided Recovery Breathing Coach
+let latestBreathe=null;
+
+function playBreatheTone(freq,durS=0.8){
+ try{
+  if(!$('uBreatheAudio')?.checked)return;
+  const ac=getSharedAudioCtx();if(!ac)return;
+  const now=ac.currentTime,osc=ac.createOscillator(),gain=ac.createGain();
+  osc.type='sine';osc.frequency.setValueAtTime(freq,now);
+  gain.gain.setValueAtTime(0.001,now);
+  gain.gain.exponentialRampToValueAtTime(0.06,now+0.04);
+  gain.gain.exponentialRampToValueAtTime(0.001,now+durS);
+  osc.connect(gain);gain.connect(ac.destination);
+  osc.onended=()=>{try{osc.disconnect();gain.disconnect()}catch(e){}};
+  osc.start(now);osc.stop(now+durS+0.05);
+ }catch(e){}
+}
+
+export const breatheCoach=createBreathingCoach({
+ patternKey:'4-7-8',
+ onTick(info){
+  const orb=$('breatheOrb');
+  if(orb)orb.style.transform=`scale(${info.scale.toFixed(3)})`;
+  const cd=$('breatheCountdown');
+  if(cd)cd.textContent=info.stepRemainingS;
+  const ring=$('breatheRingFg');
+  if(ring){
+   const maxOffset=471.2;
+   ring.style.strokeDashoffset=String((maxOffset*(1-info.progress)).toFixed(1));
+  }
+  const cyc=$('breatheCycles');
+  if(cyc)cyc.textContent=`Cycle ${info.cycle}`;
+ },
+ onPhaseChange(info){
+  const lbl=$('breatheLabel');if(lbl)lbl.textContent=info.label;
+  const inst=$('breatheInstruct');if(inst)inst.textContent=info.instruction;
+  const freq=info.stepKey==='inhale'?440:info.stepKey==='exhale'?330:523.25;
+  playBreatheTone(freq);
+ },
+ onFinish(summary){
+  latestBreathe=summary;
+  const btn=$('breatheActionBtn');if(btn)btn.textContent='Start';
+  const orb=$('breatheOrb');if(orb)orb.style.transform='scale(1)';
+  const ring=$('breatheRingFg');if(ring)ring.style.strokeDashoffset='471.2';
+  chime();
+  toast(`Breathing session finished (${summary.durationS} s, ${summary.cyclesCompleted} cycles).`);
+ }
+});
+
+const btnBreathe=$('btnBreathe');
+if(btnBreathe){
+ btnBreathe.onclick=()=>{
+  if(running&&phaseNow()!=='recovery'){
+   const r=document.querySelector('input[name=phase][value=recovery]');
+   if(r){r.checked=true;const Ev=r.ownerDocument?.defaultView?.Event||Event;r.dispatchEvent(new Ev('change',{bubbles:true}))}
+  }
+  openDialog($('breatheModal'));
+ };
+}
+
+const breatheActionBtn=$('breatheActionBtn');
+if(breatheActionBtn){
+ breatheActionBtn.onclick=()=>{
+  if(breatheCoach.isActive()){
+   breatheCoach.stop();
+   breatheActionBtn.textContent='Start';
+  }else{
+   breatheCoach.start();
+   breatheActionBtn.textContent='Stop';
+  }
+ };
+}
+
+const breatheClose=$('breatheClose');
+if(breatheClose){
+ breatheClose.onclick=()=>{
+  breatheCoach.stop();
+  closeDialog($('breatheModal'));
+ };
+}
+const breatheDoneBtn=$('breatheDoneBtn');
+if(breatheDoneBtn){
+ breatheDoneBtn.onclick=()=>{
+  breatheCoach.stop();
+  closeDialog($('breatheModal'));
+ };
+}
+setupDialogDismiss($('breatheModal'));
+$('breatheModal')?.addEventListener('close',()=>breatheCoach.stop());
+
+['tabBreathe478','tabBreatheBox','tabBreatheCoherent'].forEach(id=>{
+ const tab=$(id);
+ if(tab){
+  tab.onclick=()=>{
+   document.querySelectorAll('.breathe-tab').forEach(t=>t.classList.remove('active'));
+   tab.classList.add('active');
+   const pKey=tab.dataset.pattern;
+   breatheCoach.setPattern(pKey);
+   const desc=$('breatheDesc');
+   if(desc&&BREATHE_PATTERNS[pKey])desc.textContent=BREATHE_PATTERNS[pKey].desc;
+  };
+ }
+});
 
 // Retrospective labelling, applied at export (a label needs a report that arrives after the window).
 // A window takes a self-report's label only if it lies wholly inside the reported phase, shares its phase,

@@ -1,12 +1,51 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.8 (built-in Stroop with dynamic 7-color rotation, catch trials, sensory feedback, FACS stress vectors, and balanced layout)  
+**Project version:** v0.7.9 (guided recovery breathing coach, phone gaze downward pitch compensation, compact laptop layout, and refined Stroop palette)  
 **Date:** 2026-10-27  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
 
 ---
 
-## v0.7.8 update (2026-10-27): built-in Stroop with dynamic 7-color rotation, catch trials, sensory feedback, FACS stress vectors, and balanced layout (feat/stroop-mesh-stress-vectors)
+## v0.7.9 update (2026-10-27): guided recovery breathing coach, phone gaze downward pitch compensation, compact laptop layout, and refined Stroop palette (feat/stroop-mesh-stress-vectors)
+
+Changed
+1. `breathe.js`:
+   - Added pure modular breathing engine with 3 evidence-based recovery protocols:
+     - `4-7-8` Relaxing Breath (Inhale 4s -> Hold 7s -> Exhale 8s, 19s cycle for parasympathetic vagal stimulation).
+     - `4-4-4-4` Box Breathing (Inhale 4s -> Hold 4s -> Exhale 4s -> Hold empty 4s, 16s cycle for tactical calm).
+     - `5-5` Coherent Breathing (Inhale 5s -> Exhale 5s, 10s cycle at 6 breaths/min for resonant Heart Rate Variability).
+   - Functions `getPatternCycleS()`, `phaseAt(patternKey, elapsedS)` computing step progress, circular ring offset, countdown, and scale factor (1.0 to 1.6), and lifecycle manager `createBreathingCoach()`.
+2. `app.js`:
+   - Downward head-pitch & phone-gaze attenuation:
+     - Calculates normalized head pitch `o.pitch = (L[1].y - midEyeY) / iod` and vertical gaze `o.gy`, and calibrates `base.pitch` and `base.gy` during setup (`cal` and `calFast`).
+     - In `tensionOf(z, qFace, downLook)` and `liveTick()`: attenuates positive foreshortening artifacts on `lidTight`, `lipTight`, and `browLower` when the user tilts their head or looks down at a phone/desk, eliminating false stress spikes while keeping upright tension 100% sensitive.
+   - Blink rate floor & sensitivity fix:
+     - Raised `FLOOR.blink` from `4.5` to `7.0` blinks/min and lowered blink hysteresis thresholds from `0.5/0.3` to `0.40/0.25` so fast natural blinks are reliably captured and ordinary focus does not peg the Blink rate bar at `−3.0`.
+   - Phase-contextual action buttons (`syncPhaseButtons`):
+     - `#btnStroop` is shown automatically only during the **Stressor** phase (`hidden` in Baseline and Recovery).
+     - `#btnBreathe` is shown automatically only during the **Recovery** phase (`hidden` in Baseline and Stressor).
+   - Guided breathing integration:
+     - Synthesized soft harmonic phase transition tones (440 Hz Inhale, 523 Hz Hold, 330 Hz Exhale) with clientside WebAudio and user mute toggle (`#uBreatheAudio`).
+     - Wired breathing cycles into session telemetry (`breathe_active`, `down_look`) and session summary modal (`#sumBreathe`).
+3. `stroop.js`:
+   - Palette chromatic refinement: replaced cool-adjacent `Cyan` with high-contrast electric **`Pink`** (`inkHex: '#FF375F'`, `btnHex: '#C2185B'`, key `'k'`) and brightened `Purple` to vivid violet (`#D97BFF` / `#7B2CBF`) and `Blue` to royal blue (`#409CFF` / `#0051D5`), eliminating hue confusion among cool colors while preserving semantic-vs-ink cognitive conflict.
+   - Removed the 5th "None of the above" catch-trial button (`#stroopBtnNone` and `noneRatio`), keeping 4 dynamically rotating buttons from the 7-color pool on every trial so the target ink color is always among the 4 displayed options (`1`–`4`).
+4. `index.html` & `styles.css`:
+   - Zero horizontal overflow & compact laptop fit:
+     - Reduced `#run` left sidebar width from `340px` to `300px` (`gap: 20px`) to give the right-hand cards more horizontal room.
+     - Allowed `.ctrl-bar` to wrap gracefully (`flex-wrap: wrap`), added `white-space: nowrap` to `.pill`, `.timer`, `.seg span`, and `.btn-sm` (preventing multi-line pill distortion), and tightened `.guided-bar` (`min-width: 48px; max-width: 110px`).
+     - Reduced sticky header height from 56px to 48px; set `.cam { top: 60px; }`; constrained camera video max-height to `210px`; compacted `#affectCard` (`.cam-affect`) with 82x82 circumplex SVG so `#affectCard`, `Summary`, `Export CSV`, and `Stop` sit completely visible above the fold.
+     - Tightened `.hero-card` padding, reduced trend SVG viewBox to `0 0 600 140` (`H = 140`), and compacted Expression and Movement card rows (3.5px padding, 6px track height).
+   - Added `#breatheModal` with interactive pattern tabs (`4-7-8 Relax`, `4-4-4-4 Box`, `5-5 Coherent`), animated radial gradient breathing orb (`#breatheOrb`), circular SVG countdown ring (`#breatheRingFg`), countdown seconds, and cycle counter.
+5. `tests/ui.test.mjs`, `DATA_SCHEMA.md`, `VERSION.txt`, `launcher/`:
+   - Added unit tests for `breathe.js` (cycle lengths, step progress, scaling, lifecycle) and `tensionOf` downward pitch attenuation.
+   - Updated DOM ID contract check for all new breathing elements; updated `VERSION.txt` to `v0.7.9`; documented `breathe_active` and `down_look` in `DATA_SCHEMA.md`.
+   - Updated `launcher/build.sh` and `.github/workflows/ci.yml` with `breathe.js`, synced assets to `launcher/site/`, and rebuilt `launcher/tempo-launcher`.
+
+Checked: `node --check app.js ui.js hr.js affect.js voice.js chart.js summary.js stroop.js breathe.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (35 tests pass); `cd launcher && go build -trimpath -ldflags "-s -w" -o tempo-launcher .`.
+Not checked: real multi-participant webcam study runs across diverse operating systems; hardware rPPG under varying lighting conditions; packaged native macOS universal bundle.
+
+---
 
 Changed
 1. `stroop.js`:
@@ -14,64 +53,37 @@ Changed
    - Dynamic 4-color rotation: every trial randomly samples 4 colors from the pool to form the response buttons (`#stroopBtn1` to `#stroopBtn4`).
    - "None of the above" catch trials: ~20% of trials present an ink color chosen strictly from the 3 colors absent from the buttons, requiring the 5th option (`#stroopBtnNone`, keys `5`, `Space`, or `N`).
    - Cognitive interference calculation: calculates reaction time delay on incongruent trials (`interferenceMs = incongRt - congRt`), accuracy, and trial count.
+   - Lifecycle manager `createStroopTest()`: handles 60 s countdown interval (`timerId.unref?.()`), trial transitions, response scoring, keyboard/click dispatch, and completion callbacks.
 2. `app.js`:
-   - Audio & Haptic sensory feedback:
+   - Audio & Haptic sensory feedback & WebAudio lifecycle:
+     - Reused a single shared `AudioContext` (`getSharedAudioCtx()`) across `chime()`, `playSweetChime()`, and `playHapticThud()` with `osc.onended` node disconnection, eliminating orphaned `AudioContext` instances and unclosed audio graph nodes.
+     - Only instantiates `userAudioCtx` during setup when `use.voice` is enabled, and closes it cleanly if `getUserMedia` or model initialization fails.
      - Sweet success chime: synthesized ascending major triad arpeggio ($G_5 \to C_6 \to E_6$) via clientside Web Audio API with soft exponential decay.
      - Dual error feedback: `navigator.vibrate([40, 30, 40])` for mobile/haptic trackpads alongside a synthesized 75 Hz low-frequency audio click/thud fallback for desktop Mac users.
      - Green corner lighting: triggers `.correct-flare` on `#stroopWordBox`.
-   - Dynamic Stroop trial rendering: updates button labels, swatch colors, and click/keybindings dynamically per trial.
+   - Dynamic Stroop trial rendering & modal cleanup: updates button labels, swatch colors, and click/keybindings dynamically per trial; resets live stats and animation classes on start; stops active Stroop timers when `#stroopModal` closes via `Escape` or backdrop click.
+   - Session lifecycle & memory hygiene: tracks and cancels `rAFId` (`cancelAnimationFrame`) across `go()` and `stop()`, resets `lastT`, `fc`, `voice`, and expression/pose change rows on session restart, and exits Picture-in-Picture on `stop()`.
    - Biomechanical FACS Face Mesh: implemented `drawStressMesh(mcx, L, W, H, z, usePulse)` with chromatic AU4/AU7 heatmap, directional corrugator brow furrowing arrows, smile zygomatic pull vectors, and un-mirrored on-canvas HUD badge.
 3. `index.html`:
    - Layout rebalancing: moved the Facial Affect circumplex card (`#affectCard`) and session action buttons (`#stop`, `#openSummary`, `#exp`) into the left `.cam` column below the video feed, transforming formerly empty space into a functional biosensor and control sidebar.
-   - Stroop modal 5-button interface: updated `#stroopModal` with 4 dynamic color buttons and a 5th full-width neutral button for "None of the above" (`#stroopBtnNone`).
+   - Stroop modal 5-button interface: updated `#stroopModal` with 4 dynamic color buttons (`#stroopBtn1`–`#stroopBtn4`) and a 5th full-width neutral button for "None of the above" (`#stroopBtnNone`).
    - Hero tension chart dimensions: updated trend SVG viewBox to `0 0 600 170` to reduce unnecessary vertical height on laptop screens.
-4. `chart.js`:
-   - Updated trend SVG height `H = 170` (down from `220`), tightening vertical space while maintaining dynamic auto-scaling.
+   - Bumped module and stylesheet versions to `?v=0.7.8`.
+4. `ui.js` & `voice.js` & `chart.js`:
+   - `ui.js`: added `renderSummary()` rendering for `#sumStroop`, aligned `chart.js?v=0.7.8` import query string, and dispatched `close` event in `closeDialog` fallback so dialog close listeners always fire.
+   - `voice.js`: disconnected `AnalyserNode` (`an.disconnect()`) and guarded `ctx.close()` promise rejection on `stop()`.
+   - `chart.js`: updated trend SVG height `H = 170` (down from `220`), tightening vertical space while maintaining dynamic auto-scaling.
 5. `styles.css`:
    - Stroop word box corner lighting: added `@keyframes cornerGreenGlow` with radial gradients strictly bounded within the 4 corners of `#stroopWordBox`.
    - Stroop error shake: added `@keyframes shakeErr` with red border flash.
    - 7-color button themes: added swatch styles for `.red`, `.green`, `.blue`, `.yellow`, `.purple`, `.orange`, `.cyan`, and neutral `.stroop-none-btn`.
-   - Layout tightening: `.hero-card` padding reduced to `18px 22px 14px;`, `.card` padding to `16px 18px;`, `.row` padding to `5px 0;`. Added `.cam-affect` and `.cam-actions` rules.
-6. `tests/ui.test.mjs`:
-   - Updated Stroop tests to verify 7-color pool, chromatic dissonance between ink and button swatches, catch trial evaluation (`isNone`), hotkeys (`1-4`, `5`), and contract verification for all DOM IDs.
-7. `launcher/`:
-   - Synced assets to `launcher/site/` and verified Go standalone launcher compiles cleanly.
+   - Layout tightening: `.hero-card` padding reduced to `18px 22px 14px;`, `.card` padding to `16px 18px;`, `.row` padding to `5px 0;`. Added `.cam-affect` and `.cam-actions` rules, and fixed `.stroop-keys-guide` flex layout.
+6. `tests/ui.test.mjs`, `.github/workflows/ci.yml`, `DATA_SCHEMA.md`, `VERSION.txt`, `launcher/`:
+   - Updated Stroop tests to verify 7-color pool, chromatic dissonance between ink and button swatches, catch trial evaluation (`isNone`), hotkeys (`1-4`, `5`), `drawStressMesh`, and contract verification for all DOM IDs (including `stroopBtn1`–`stroopBtn4`).
+   - Added `node --check stroop.js` to `.github/workflows/ci.yml`, documented `stroop_active` in `DATA_SCHEMA.md`, updated `VERSION.txt` to `v0.7.8`, and synced assets to `launcher/site/`.
 
 Checked: `node --check app.js ui.js hr.js affect.js voice.js chart.js summary.js stroop.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (33 tests pass); `cd launcher && go build -trimpath -ldflags "-s -w" -o tempo-launcher .`.
-Not checked: multi-subject live behavioral testing; hardware trackpad haptic motor calls in locked-down browser environments; packaged `.dmg` macOS app.
-
-Changed
-1. `stroop.js`:
-   - Pure, modular cognitive stressor engine: `STROOP_COLORS` (Red, Green, Blue, Yellow with keyboard keys `1-4`, `R/G/B/Y`, and arrows), `generateTrial(congruentRatio = 0.25)`, `evaluateResponse(trial, chosenName, answeredAt)`, and `aggregateStroop(results)`.
-   - Cognitive interference calculation: calculates reaction time delay on incongruent trials (`interferenceMs = incongRt - congRt`) alongside accuracy and trial count.
-   - Lifecycle manager `createStroopTest()`: handles 60 s countdown interval, trial transitions, response scoring, keyboard/click dispatch, and completion callbacks.
-2. `index.html`:
-   - Added `#btnStroop` trigger in control bar with brain icon and keyboard cue.
-   - Added `#sumStroop` cognitive stressor card in `#summary` dialog.
-   - Added `#stroopModal` dialog with intro guide, 60 s timer, active challenge box (`#stroopWordBox`), color buttons (`#stroopBtnRed` etc.), live stats counters, and completion stats grid (`#stroopSummary`).
-   - Bumped module versions to `?v=0.7.8`.
-3. `styles.css`:
-   - Dialog transitions for `#stroopModal` matching macOS Apple Health design system.
-   - Keycap styles (`kbd`, `.kbadge`), color buttons (`.stroop-btn.red`, `.green`, `.blue`, `.yellow`), word box feedback animations (`@keyframes correctPulse`, `@keyframes shakeErr`), and live stats pills.
-   - `.btn-stroop.active-hint` pulse animation to prompt participant when Stressor phase begins.
-4. `app.js`:
-   - Biomechanical FACS Face Mesh: implemented `drawStressMesh(mcx, L, W, H, z, usePulse)`:
-     - Chromatic heatmap: points dynamically shift from calm cyan/white (`rgba(100,210,255,0.75)`) to amber/crimson (`#FF3B30` / `#FF9500`) when brow lowering (`AU4`) or lid tightening (`AU7`) are elevated.
-     - Directional vector arrows: draws corrugator brow furrowing arrows from `L[107]` and `L[336]` pulling downward and inward toward the glabella `L[168]` proportional to `z.browLower`, and zygomatic smile vectors from mouth corners to cheekbones proportional to `z.smile`.
-     - Pulse ROIs: renders forehead and cheek sample windows when pulse tracking is enabled.
-     - Canvas HUD badge: renders an un-mirrored on-canvas badge (`AU4 BROW TENSION ▲`, `AU7 ORBITAL SQUINT ▲`, `AU12 SMILE ACTIVE`, or `FACS TRACKING`).
-   - Stroop Integration: wired `stroopTest` to modal triggers, color clicks, and keyboard shortcuts; logged `stroop_active` flag in per-second telemetry; passed `stroop: latestStroop` to `renderSummary()`; automated phase hint in `phaseSeg`.
-5. `ui.js`:
-   - `renderSummary()`: added rendering for `#sumStroop` cognitive stressor section showing trials, accuracy, mean RT, and Stroop interference delay.
-6. `tests/ui.test.mjs`:
-   - Added comprehensive unit tests for Stroop trial generation, response scoring, interference calculation, and test engine lifecycle.
-   - Added unit test for `drawStressMesh` with mock 2D context verifying landmark rendering, biomechanical arrow drawing, HUD text, and pulse ROIs.
-   - Verified that all script element IDs exist in `index.html` and that launcher copies all modules.
-7. `launcher/build.sh`:
-   - Added `../stroop.js` to build copy step; updated `launcher/site/` and verified Go launcher builds cleanly.
-
-Checked: `node --check app.js ui.js hr.js affect.js voice.js chart.js summary.js stroop.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (33 tests pass); `cd launcher && go build -trimpath -ldflags "-s -w" -o tempo-launcher .`.
-Not checked: real multi-participant webcam study runs across diverse operating systems; hardware rPPG under varying lighting conditions; packaged native macOS universal bundle.
+Not checked: real multi-participant webcam study runs across diverse operating systems; hardware rPPG under varying lighting conditions; hardware trackpad haptic motor calls in locked-down browser environments; packaged `.dmg` macOS universal bundle.
 
 ---
 

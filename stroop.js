@@ -4,11 +4,11 @@
 export const STROOP_COLORS = [
   { name: 'Red',    inkHex: '#FF453A', btnHex: '#D70015', key: 'r', class: 'red' },
   { name: 'Green',  inkHex: '#30D158', btnHex: '#248A3D', key: 'g', class: 'green' },
-  { name: 'Blue',   inkHex: '#0A84FF', btnHex: '#0058D0', key: 'b', class: 'blue' },
+  { name: 'Blue',   inkHex: '#409CFF', btnHex: '#0051D5', key: 'b', class: 'blue' },
   { name: 'Yellow', inkHex: '#FFD60A', btnHex: '#CC8800', key: 'y', class: 'yellow' },
-  { name: 'Purple', inkHex: '#BF5AF2', btnHex: '#8944AB', key: 'p', class: 'purple' },
+  { name: 'Purple', inkHex: '#D97BFF', btnHex: '#7B2CBF', key: 'p', class: 'purple' },
   { name: 'Orange', inkHex: '#FF9F0A', btnHex: '#C96800', key: 'o', class: 'orange' },
-  { name: 'Cyan',   inkHex: '#64D2FF', btnHex: '#0082A8', key: 'c', class: 'cyan' }
+  { name: 'Pink',   inkHex: '#FF375F', btnHex: '#C2185B', key: 'k', class: 'pink' }
 ];
 
 // Backward-compatibility hex alias
@@ -23,32 +23,20 @@ function shuffle(arr) {
   return a;
 }
 
-export function generateTrial(congruentRatio = 0.20, noneRatio = 0.20) {
+export function generateTrial(congruentRatio = 0.25) {
   // 1. Pick 4 rotating button options from the 7-color pool
   const shuffled = shuffle(STROOP_COLORS);
   const buttonOptions = shuffled.slice(0, 4);
-  const absentColors = shuffled.slice(4);
 
-  const isNone = Math.random() < noneRatio;
-  let targetColor;
+  // 2. Ink color is always one of the 4 displayed buttons
+  const targetColor = buttonOptions[Math.floor(Math.random() * buttonOptions.length)];
+  const isCongruent = Math.random() < congruentRatio;
   let word;
-  let isCongruent = false;
-
-  if (isNone) {
-    // Ink color is deliberately chosen from absentColors so NO button matches
-    targetColor = absentColors[Math.floor(Math.random() * absentColors.length)];
-    // Word can be any color name (often one of the button names as a strong distractor)
-    word = shuffled[Math.floor(Math.random() * shuffled.length)].name;
+  if (isCongruent) {
+    word = targetColor.name;
   } else {
-    // Ink color is one of the 4 displayed buttons
-    targetColor = buttonOptions[Math.floor(Math.random() * buttonOptions.length)];
-    isCongruent = Math.random() < congruentRatio;
-    if (isCongruent) {
-      word = targetColor.name;
-    } else {
-      const otherNames = STROOP_COLORS.filter(c => c.name !== targetColor.name).map(c => c.name);
-      word = otherNames[Math.floor(Math.random() * otherNames.length)];
-    }
+    const otherNames = STROOP_COLORS.filter(c => c.name !== targetColor.name).map(c => c.name);
+    word = otherNames[Math.floor(Math.random() * otherNames.length)];
   }
 
   return {
@@ -58,8 +46,7 @@ export function generateTrial(congruentRatio = 0.20, noneRatio = 0.20) {
     colorHex: targetColor.inkHex, // backward compat
     btnHex: targetColor.btnHex,
     buttonOptions,
-    isNone,
-    isCongruent: !isNone && isCongruent,
+    isCongruent,
     presentedAt: performance.now()
   };
 }
@@ -67,10 +54,7 @@ export function generateTrial(congruentRatio = 0.20, noneRatio = 0.20) {
 export function evaluateResponse(trial, chosenName, answeredAt = performance.now()) {
   const rtMs = Math.max(0, Math.round(answeredAt - (trial.presentedAt || answeredAt)));
   const norm = s => (s || '').toLowerCase().trim();
-  const cNorm = norm(chosenName);
-  const ok = trial.isNone
-    ? (cNorm === 'none' || cNorm === 'none of the above')
-    : (cNorm === norm(trial.colorName));
+  const ok = norm(chosenName) === norm(trial.colorName);
 
   return {
     word: trial.word,
@@ -78,7 +62,6 @@ export function evaluateResponse(trial, chosenName, answeredAt = performance.now
     chosenName,
     ok,
     rtMs,
-    isNone: !!trial.isNone,
     isCongruent: !!trial.isCongruent
   };
 }
@@ -92,7 +75,6 @@ export function aggregateStroop(results = []) {
       meanRtMs: 0,
       congruentMeanRtMs: 0,
       incongruentMeanRtMs: 0,
-      noneMeanRtMs: 0,
       interferenceMs: 0,
       score: 0
     };
@@ -105,9 +87,8 @@ export function aggregateStroop(results = []) {
 
   const mean = arr => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0;
   const meanRtMs = mean(correctTrials.map(r => r.rtMs));
-  const congRt = mean(correctTrials.filter(r => r.isCongruent && !r.isNone).map(r => r.rtMs));
-  const incongRt = mean(correctTrials.filter(r => !r.isCongruent && !r.isNone).map(r => r.rtMs));
-  const noneRt = mean(correctTrials.filter(r => r.isNone).map(r => r.rtMs));
+  const congRt = mean(correctTrials.filter(r => r.isCongruent).map(r => r.rtMs));
+  const incongRt = mean(correctTrials.filter(r => !r.isCongruent).map(r => r.rtMs));
   const interferenceMs = (congRt > 0 && incongRt > 0) ? Math.max(0, incongRt - congRt) : 0;
   const score = Math.max(0, correct * 10 - (dataset.length - correct) * 5);
 
@@ -118,7 +99,6 @@ export function aggregateStroop(results = []) {
     meanRtMs,
     congruentMeanRtMs: congRt,
     incongruentMeanRtMs: incongRt,
-    noneMeanRtMs: noneRt,
     interferenceMs,
     score
   };
@@ -160,6 +140,7 @@ export function createStroopTest({
           this.stop();
         }
       }, 1000);
+      timerId.unref?.();
     },
 
     answer(colorName) {
@@ -180,11 +161,6 @@ export function createStroopTest({
           e.preventDefault?.();
           return this.answer(currentTrial.buttonOptions[idx].name);
         }
-      }
-      // 5, Space, or 'n' maps to 'None'
-      if (key === '5' || key === ' ' || key === 'n') {
-        e.preventDefault?.();
-        return this.answer('None');
       }
       // Hotkey matching by first letter of visible buttons
       const match = currentTrial.buttonOptions?.find(c => c.key === key || c.name.toLowerCase() === key);

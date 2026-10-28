@@ -12,7 +12,7 @@ const src = ['../app.js', '../ui.js'].map(f => readFileSync(new URL(f, import.me
 test('every id looked up by the scripts exists in the page', () => {
   const have = new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]));
   const used = new Set([...src.matchAll(/\$\((['"])([A-Za-z][\w-]*)\1\)/g)].map(m => m[2]));
-  for (const id of ['v_sattva', 'v_rajas', 'v_tamas', 'b_sattva', 'b_rajas', 'b_tamas', 'ag']) used.add(id); // built dynamically in the demo layer
+  for (const id of ['v_sattva', 'v_rajas', 'v_tamas', 'b_sattva', 'b_rajas', 'b_tamas', 'ag', 'stroopBtn1', 'stroopBtn2', 'stroopBtn3', 'stroopBtn4']) used.add(id); // built dynamically in the demo layer & Stroop loop
   const missing = [...used].filter(id => !have.has(id));
   assert.deepEqual(missing, [], 'ids used but absent from index.html: ' + missing.join(', '));
   assert.ok(used.size > 40, 'expected to find the ids the scripts use, found ' + used.size);
@@ -446,37 +446,29 @@ test('stroop.js: trial generation, response scoring, interference calculation an
   assert.ok(colorNames.includes(trial.word));
   assert.ok(colorNames.includes(trial.colorName));
   assert.equal(trial.buttonOptions.length, 4);
-  assert.ok(typeof trial.isNone === 'boolean');
+  assert.ok(trial.buttonOptions.some(b => b.name === trial.colorName), 'target ink color is always one of the 4 rotating buttons');
   assert.ok(typeof trial.isCongruent === 'boolean');
   if (trial.isCongruent) {
     assert.equal(trial.word, trial.colorName);
   }
 
   // 2. evaluateResponse
-  const correct = evaluateResponse({ word: 'Red', colorName: 'Green', isNone: false, isCongruent: false, presentedAt: 1000 }, 'Green', 1650);
+  const correct = evaluateResponse({ word: 'Red', colorName: 'Green', isCongruent: false, presentedAt: 1000 }, 'Green', 1650);
   assert.equal(correct.ok, true);
   assert.equal(correct.rtMs, 650);
   assert.equal(correct.chosenName, 'Green');
 
-  const wrong = evaluateResponse({ word: 'Blue', colorName: 'Yellow', isNone: false, isCongruent: false, presentedAt: 1000 }, 'Blue', 1500);
+  const wrong = evaluateResponse({ word: 'Blue', colorName: 'Yellow', isCongruent: false, presentedAt: 1000 }, 'Blue', 1500);
   assert.equal(wrong.ok, false);
   assert.equal(wrong.rtMs, 500);
 
-  // Catch trial: 'None of the above'
-  const catchCorrect = evaluateResponse({ word: 'Purple', colorName: 'Cyan', isNone: true, presentedAt: 1000 }, 'None', 1450);
-  assert.equal(catchCorrect.ok, true);
-  assert.equal(catchCorrect.isNone, true);
-
-  const catchWrong = evaluateResponse({ word: 'Purple', colorName: 'Cyan', isNone: true, presentedAt: 1000 }, 'Red', 1450);
-  assert.equal(catchWrong.ok, false);
-
   // 3. aggregateStroop
   const dummyResults = [
-    { word: 'Red', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 500, isCongruent: true, isNone: false },
-    { word: 'Blue', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 520, isCongruent: true, isNone: false },
-    { word: 'Green', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 650, isCongruent: false, isNone: false },
-    { word: 'Yellow', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 670, isCongruent: false, isNone: false },
-    { word: 'Red', colorName: 'Green', chosenName: 'Yellow', ok: false, rtMs: 700, isCongruent: false, isNone: false }
+    { word: 'Red', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 500, isCongruent: true },
+    { word: 'Blue', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 520, isCongruent: true },
+    { word: 'Green', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 650, isCongruent: false },
+    { word: 'Yellow', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 670, isCongruent: false },
+    { word: 'Red', colorName: 'Green', chosenName: 'Yellow', ok: false, rtMs: 700, isCongruent: false }
   ];
   const agg = aggregateStroop(dummyResults);
   assert.equal(agg.trials, 5);
@@ -509,15 +501,10 @@ test('stroop.js: trial generation, response scoring, interference calculation an
   assert.ok(handled1);
   assert.equal(trialsReceived, 3);
 
-  // Answer via key 5 (None)
-  const handled5 = testEngine.handleKey({ key: '5' });
-  assert.ok(handled5);
-  assert.equal(trialsReceived, 4);
-
   const stoppedSummary = testEngine.stop();
   assert.equal(testEngine.isActive(), false);
-  assert.equal(stoppedSummary.trials, 3);
-  assert.equal(testSummary?.trials, 3);
+  assert.equal(stoppedSummary.trials, 2);
+  assert.equal(testSummary?.trials, 2);
 });
 
 test('face mesh stress vectors & tension heatmap (drawStressMesh)', async () => {
@@ -575,4 +562,64 @@ test('face mesh stress vectors & tension heatmap (drawStressMesh)', async () => 
   drawStressMesh(mockCtx, mockLandmarks, 640, 480, { browLower: 0, lidTight: 0, smile: 1.2 }, true);
 
   assert.ok(calls.roundRect + calls.strokeRect >= 3, 'Pulse ROIs (forehead + cheeks) rendered');
+});
+
+test('guided breathing coach (breathe.js): protocols, phase progress and cycle calculation', async () => {
+  const { BREATHE_PATTERNS, phaseAt, getPatternCycleS, createBreathingCoach } = await import('../breathe.js');
+
+  assert.ok(BREATHE_PATTERNS['4-7-8']);
+  assert.ok(BREATHE_PATTERNS['box']);
+  assert.ok(BREATHE_PATTERNS['coherent']);
+
+  assert.equal(getPatternCycleS('4-7-8'), 19);
+  assert.equal(getPatternCycleS('box'), 16);
+  assert.equal(getPatternCycleS('coherent'), 10);
+
+  // phaseAt 4-7-8: Inhale (0..4s), Hold (4..11s), Exhale (11..19s)
+  const pInhale = phaseAt('4-7-8', 2.0);
+  assert.equal(pInhale.stepKey, 'inhale');
+  assert.equal(pInhale.stepRemainingS, 2);
+  assert.ok(pInhale.scale > 1.0 && pInhale.scale < 1.6);
+  assert.equal(pInhale.cycle, 1);
+
+  const pHold = phaseAt('4-7-8', 6.0);
+  assert.equal(pHold.stepKey, 'hold1');
+  assert.equal(pHold.stepRemainingS, 5);
+  assert.equal(pHold.scale, 1.6);
+
+  const pExhale = phaseAt('4-7-8', 15.0);
+  assert.equal(pExhale.stepKey, 'exhale');
+  assert.equal(pExhale.stepRemainingS, 4);
+  assert.ok(pExhale.scale < 1.6 && pExhale.scale > 1.0);
+
+  // Lifecycle
+  let tickCount = 0;
+  let phaseChanges = 0;
+  const coach = createBreathingCoach({
+    patternKey: 'coherent',
+    onTick: () => { tickCount++; },
+    onPhaseChange: () => { phaseChanges++; }
+  });
+  assert.equal(coach.isActive(), false);
+  coach.start();
+  assert.equal(coach.isActive(), true);
+  assert.ok(tickCount > 0);
+
+  const summary = coach.stop();
+  assert.equal(coach.isActive(), false);
+  assert.ok(summary);
+  assert.equal(summary.patternKey, 'coherent');
+});
+
+test('tensionOf: downward pitch and phone gaze attenuation suppresses false spikes', async () => {
+  const { tensionOf } = await import('../app.js');
+
+  // Neutral screen-facing baseline: lidTight = 2, lipTight = 2, browLower = -1.5, smile = -0.5
+  const z = { lidTight: 2.0, lipTight: 2.0, browLower: -1.5, smile: -0.5, eyeWide: 0 };
+  const rawUpright = tensionOf(z, 0.9, 0); // downLook = 0
+  assert.ok(rawUpright > 0.4, 'raw upright tension elevated');
+
+  // When looking down at phone, downLook = 1.0 attenuates positive lidTight, lipTight, browLower
+  const rawDownLook = tensionOf(z, 0.9, 1.0);
+  assert.ok(rawDownLook < rawUpright * 0.65, `downward gaze attenuated (${rawDownLook} < ${rawUpright * 0.65})`);
 });

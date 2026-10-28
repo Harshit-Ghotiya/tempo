@@ -50,3 +50,6 @@ The nearest later report wins if several qualify. No label is carried forward.
 - `skin_luma`: mean face skin luminance (0.299R + 0.587G + 0.114B over 2 s buffer). Derived lighting indicator with no raw image data preserved.
 - `skin_rg`: mean red-to-green skin ratio (R/G). Values > 1.75 indicate warm/yellow lighting that attenuates green rPPG pulse signals.
 - `hr_baseline_late`: boolean flag indicating whether the HR/HRV baseline was acquired during the Baseline phase rather than the initial setup calibration due to lighting conditions. `z_hr` and `z_hrv` before acquisition are blank; subsequent windows are calibrated to this late baseline.
+- `stroop_active`: integer flag (`1` or `0`) indicating whether the built-in 60-second Stroop Color-Word cognitive stressor challenge was actively running during this window.
+- `breathe_active`: integer flag (`1` or `0`) indicating whether the guided parasympathetic breathing coach was actively running during this window.
+- `down_look`: downward head-pitch and gaze attenuation coefficient in [0, 1] (0 = neutral screen-facing; > 0 = foreshortening attenuation applied to lidTight/browLower/lipTight).

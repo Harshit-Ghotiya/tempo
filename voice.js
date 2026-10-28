@@ -57,7 +57,7 @@ export function createVoiceMonitor(stream, onVoice, existingCtx = null) {
   return {
     stop() {
       clearInterval(timer);
-      try { src.disconnect(); ctx.close(); } catch (e) {}
+      try { src.disconnect(); an.disconnect(); ctx.close().catch?.(() => {}); } catch (e) {}
     }
   };
 }
