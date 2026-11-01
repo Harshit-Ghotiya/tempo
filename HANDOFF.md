@@ -1,8 +1,34 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.7.9 (guided recovery breathing coach, phone gaze downward pitch compensation, compact laptop layout, and refined Stroop palette)  
-**Date:** 2026-10-27  
+**Project version:** v0.8.0 (production-grade modular refactoring, modal overscroll containment, breathing coach UX polish, and downward pitch helper)  
+**Date:** 2026-11-01  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
+
+---
+
+## v0.8.0 update (2026-11-01): production-grade modular refactoring, modal overscroll containment, breathing coach UX polish, and downward pitch helper (feat/stroop-mesh-stress-vectors)
+
+Changed
+1. `app.js`:
+   - Refactored the entire 1,000+ line module from dense, single-letter prototype syntax into 12 clearly structured, self-documenting architectural sections (Configuration & Priors, Pure Math & Tension Scoring, Runtime State & Worker Clock, Multimodal Inference & Fusion, WebAudio Synthesis, Biomechanical FACS Mesh, Frame Capture & Feature Extraction, Live Telemetry Loop, Phase Controls & Check-In Drawer, Stroop Stressor, Breathing Coach, and Session Lifecycle & CSV Export).
+   - Extracted and exported `downLookOf(x, baseRef)` to unify downward head-pitch and vertical gaze attenuation across the 4 Hz fast display (`liveTick`) and 1 Hz study log (`tick`).
+   - Added `syncBreathePreview(patternKey)` so switching between `4-7-8 Relax`, `4-4-4-4 Box`, and `5-5 Coherent` tabs updates `aria-selected`, countdown seconds, phase label, and instruction immediately even while idle, and added `Space` keyboard shortcut support inside `#breatheModal`.
+   - Guarded `latestStroop` and `latestBreathe` so accidental 0-trial or 0-second modal opens/closes do not overwrite a previously completed stressor or breathing summary, and added an empty-session guard on `#exp` CSV export.
+2. `breathe.js`, `stroop.js` & `ui.js`:
+   - `breathe.js`: updated `setPattern(key)` to reset `startTime` when switching protocols mid-session so the newly selected breathing technique starts cleanly at Step 0 (`Breathe in`).
+   - `stroop.js`: cleaned up trial generator and documentation for the 7-color (`Red`, `Green`, `Blue`, `Yellow`, `Purple`, `Orange`, `Pink`) 4-button rotating Stroop stressor.
+   - `ui.js`: formatted all DOM helpers for readability, added null-safety guards on DOM lookups, and updated `setupDialogDismiss(d)` to check `'closedBy' in HTMLDialogElement.prototype` per modern web dialog standards.
+3. `index.html` & `styles.css`:
+   - Added `overscroll-behavior: contain` on `dialog:modal` and `overflow: hidden; overscroll-behavior: contain` on `dialog::backdrop` to prevent background page scroll chaining when `#summary`, `#stroopModal`, or `#breatheModal` is open.
+   - Added `.section-title:has(+ .tiles-grid:not(:has(> :not([hidden]))))` so the "Highlights" heading and grid collapse cleanly when both `#pulseBox` and `#guna` are hidden.
+   - Replaced inline HTML styles with semantic classes (`.cam-privacy-note`, `.sumbreathe`, `.breathe-footer`, `.breathe-footer-actions`), added `aria-selected` attributes to `.breathe-tab` controls, tightened `.cam` video max-height to `200px` for 13"–14" laptop viewports, and removed unused legacy Stroop CSS classes.
+   - Bumped asset cache-busting query strings to `?v=0.8.0`.
+4. `tests/ui.test.mjs`, `VERSION.txt`, `launcher/`:
+   - Added unit tests for `downLookOf()`, mid-session `breatheCoach.setPattern()`, and phase-contextual button visibility (`#btnStroop` vs `#btnBreathe`).
+   - Updated `VERSION.txt` to `v0.8.0`, synced `launcher/site/`, and rebuilt `launcher/tempo-launcher`.
+
+Checked: `node --check app.js ui.js hr.js affect.js voice.js chart.js summary.js stroop.js breathe.js`; `node --test tests/ui.test.mjs tests/hr.test.mjs` (35 tests pass); `cd launcher && go build -trimpath -ldflags "-s -w" -o tempo-launcher .`.
+Not checked: real multi-participant webcam study runs across diverse operating systems; hardware rPPG under varying lighting conditions; packaged native macOS universal bundle.
 
 ---
 

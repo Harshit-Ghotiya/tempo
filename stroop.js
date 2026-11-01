@@ -1,5 +1,6 @@
 // stroop.js: Standardized Stroop Color-Word cognitive stressor engine and trial generator.
-// Evaluates cognitive interference (reaction time delay on incongruent trials), dynamic color rotation, and catch trials.
+// Uses a 7-color high-contrast palette (Red, Green, Blue, Yellow, Purple, Orange, Pink)
+// with chromatic dissonance (distinct inkHex vs button swatch btnHex) and 4 dynamically rotating response buttons.
 
 export const STROOP_COLORS = [
   { name: 'Red',    inkHex: '#FF453A', btnHex: '#D70015', key: 'r', class: 'red' },
@@ -24,11 +25,10 @@ function shuffle(arr) {
 }
 
 export function generateTrial(congruentRatio = 0.25) {
-  // 1. Pick 4 rotating button options from the 7-color pool
-  const shuffled = shuffle(STROOP_COLORS);
-  const buttonOptions = shuffled.slice(0, 4);
+  // 1. Sample 4 rotating button options from the 7-color pool
+  const buttonOptions = shuffle(STROOP_COLORS).slice(0, 4);
 
-  // 2. Ink color is always one of the 4 displayed buttons
+  // 2. Target ink color is always one of the 4 displayed options
   const targetColor = buttonOptions[Math.floor(Math.random() * buttonOptions.length)];
   const isCongruent = Math.random() < congruentRatio;
   let word;
@@ -43,7 +43,7 @@ export function generateTrial(congruentRatio = 0.25) {
     word,
     colorName: targetColor.name,
     inkHex: targetColor.inkHex,
-    colorHex: targetColor.inkHex, // backward compat
+    colorHex: targetColor.inkHex,
     btnHex: targetColor.btnHex,
     buttonOptions,
     isCongruent,
@@ -115,7 +115,6 @@ export function createStroopTest({
   let currentTrial = null;
   const results = [];
   let remainingS = durationS;
-  let startTime = 0;
 
   function next() {
     if (!active) return;
@@ -129,7 +128,6 @@ export function createStroopTest({
       active = true;
       results.length = 0;
       remainingS = durationS;
-      startTime = performance.now();
       next();
 
       if (typeof onTick === 'function') onTick(remainingS, durationS);
@@ -153,8 +151,8 @@ export function createStroopTest({
 
     handleKey(e) {
       if (!active || !currentTrial) return null;
-      const key = e.key.toLowerCase();
-      // 1, 2, 3, 4 map to the currently displayed 4 buttonOptions
+      const key = (e.key || '').toLowerCase();
+      // Keys 1-4 map directly to the 4 rotating response buttons
       if (['1', '2', '3', '4'].includes(key)) {
         const idx = Number(key) - 1;
         if (currentTrial.buttonOptions && currentTrial.buttonOptions[idx]) {
@@ -162,7 +160,7 @@ export function createStroopTest({
           return this.answer(currentTrial.buttonOptions[idx].name);
         }
       }
-      // Hotkey matching by first letter of visible buttons
+      // First-letter hotkey fallback for currently displayed options
       const match = currentTrial.buttonOptions?.find(c => c.key === key || c.name.toLowerCase() === key);
       if (match) {
         e.preventDefault?.();

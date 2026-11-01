@@ -1,4 +1,4 @@
-/* Tempo: Apple-style design system (v0.7.0) */
+/* Tempo: Apple-style design system (v0.8.0) */
 :root {
   color-scheme: light dark;
   /* Raw palette: light / dark */
@@ -507,7 +507,7 @@ body[data-stage=live] #live { display: grid; animation: fade .4s ease both; }
 video {
   display: block;
   width: 100%;
-  max-height: 210px;
+  max-height: 200px;
   aspect-ratio: 4/3;
   object-fit: cover;
   transform: scaleX(-1);
@@ -619,20 +619,26 @@ body[data-stage=live] .cam-badge-live { display: inline-flex; }
 [data-q=poor] { background: var(--red); }
 
 /* Bottom Left Column Additions: Affect & Actions */
+.cam-privacy-note {
+  margin: 4px 0 8px;
+}
 .cam-affect {
-  margin-top: 10px;
-  padding: 12px 14px;
+  margin-top: 6px;
+  padding: 10px 14px;
 }
 .cam-affect .af-wrap {
   margin: 2px 0 2px;
   gap: 12px;
 }
 .cam-affect .af-svg {
-  width: 82px;
-  height: 82px;
+  width: 80px;
+  height: 80px;
 }
 .cam-affect .tile-head {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+.cam-affect .tile-foot {
+  padding-top: 6px;
 }
 .cam-actions {
   display: flex;
@@ -976,6 +982,10 @@ body[data-stage=setup] .cam-actions {
 }
 
 /* Bento Tiles Grid */
+.section-title:has(+ .tiles-grid:not(:has(> :not([hidden])))),
+.tiles-grid:not(:has(> :not([hidden]))) {
+  display: none;
+}
 .tiles-grid {
   grid-column: 1 / -1;
   display: grid;
@@ -1344,7 +1354,10 @@ th { color: var(--text-2); font-size: 12px; text-transform: uppercase; letter-sp
   }
 }
 
-/* Session Summary Modal (<dialog>) */
+/* Session Summary, Stroop & Breathing Modals (<dialog>) */
+dialog:modal {
+  overscroll-behavior: contain;
+}
 dialog#summary, dialog#stroopModal, dialog#breatheModal {
   position: fixed;
   inset: 0;
@@ -1352,6 +1365,7 @@ dialog#summary, dialog#stroopModal, dialog#breatheModal {
   width: min(940px, 94vw);
   max-height: 90vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 28px;
@@ -1379,6 +1393,8 @@ dialog#summary[open], dialog#stroopModal[open], dialog#breatheModal[open] {
   }
 }
 dialog#summary::backdrop, dialog#stroopModal::backdrop, dialog#breatheModal::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
   background-color: rgba(0, 0, 0, 0);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1695,18 +1711,9 @@ kbd {
 .stroop-btn.purple { background: #7B2CBF; }
 .stroop-btn.orange { background: #C96800; }
 .stroop-btn.pink   { background: #C2185B; }
-.stroop-btn.cyan   { background: #0082A8; }
-.stroop-btn.stroop-none-btn {
-  background: var(--fill);
-  color: var(--text);
-  border: 1px solid var(--line);
-  justify-content: center;
-  padding: 12px 14px;
-  font-weight: 600;
-}
-.stroop-btn.stroop-none-btn:hover {
-  background: color-mix(in srgb, var(--fill) 80%, white 20%);
-  border-color: var(--accent);
+.stroop-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .kbadge {
   font-size: 11px;
@@ -1715,11 +1722,6 @@ kbd {
   padding: 3px 6px;
   border-radius: 6px;
   letter-spacing: .03em;
-}
-.stroop-none-btn .kbadge {
-  background: color-mix(in srgb, var(--text) 12%, transparent);
-  color: var(--text);
-  margin-right: 6px;
 }
 .stroop-live-stats {
   display: flex;
@@ -1771,7 +1773,7 @@ kbd {
   font-variant-numeric: tabular-nums;
 }
 
-/* Stroop section in Session Summary */
+/* Stroop & Breathing sections in Session Summary */
 .sumstroop {
   background: color-mix(in srgb, var(--orange) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--orange) 22%, transparent);
@@ -1780,6 +1782,10 @@ kbd {
   margin-bottom: 20px;
   font-size: 13px;
   color: var(--text);
+}
+.sumstroop.sumbreathe {
+  background: color-mix(in srgb, var(--teal) 7%, transparent);
+  border-color: color-mix(in srgb, var(--teal) 22%, transparent);
 }
 .sumstroop-title {
   font-weight: 700;
@@ -1906,6 +1912,18 @@ kbd {
   color: var(--text-2);
   cursor: pointer;
   margin-top: 4px;
+}
+.breathe-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.breathe-footer-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* Print Styles for Slide / PDF */

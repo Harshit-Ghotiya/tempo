@@ -8,7 +8,7 @@
 <script>try{const s=localStorage.getItem('color-scheme');document.querySelector('meta[name="color-scheme"]').content=s??'light dark';if(s)document.documentElement.dataset.theme=s}catch(e){}</script>
 <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="styles.css?v=0.7.9">
+<link rel="stylesheet" href="styles.css?v=0.8.0">
 </head>
 <body data-stage="consent">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -125,7 +125,7 @@
    <span class="signal-chip"><i class="dot" id="dPose"></i>Posture</span>
    <span class="signal-chip"><i class="dot" id="dVoice"></i>Voice</span>
   </div>
-  <p class="dusk small" style="margin-top:6px;margin-bottom:12px">Processed on this device. Nothing is recorded.</p>
+  <p class="dusk small cam-privacy-note">Processed on this device. Nothing is recorded.</p>
 
   <div class="tile-card cam-affect tint-teal" id="affectCard">
    <div class="tile-head">
@@ -347,7 +347,7 @@
  </header>
  <section id="sumPhases" class="sumphases"></section>
  <section id="sumStroop" class="sumstroop" hidden></section>
- <section id="sumBreathe" class="sumstroop" style="background:color-mix(in srgb,var(--teal) 7%,transparent);border-color:color-mix(in srgb,var(--teal) 22%,transparent)" hidden></section>
+ <section id="sumBreathe" class="sumstroop sumbreathe" hidden></section>
  <figure class="sumfig">
   <svg id="sumChart" viewBox="0 0 800 220" role="img" aria-label="Facial tension over the whole session"></svg>
   <figcaption>Facial tension index (10 s rolling windows) across the session; check-ins marked.</figcaption>
@@ -438,10 +438,10 @@
    </div>
   </header>
 
-  <div class="breathe-tabs" role="tablist">
-   <button class="breathe-tab active" id="tabBreathe478" type="button" role="tab" data-pattern="4-7-8">4-7-8 Relax</button>
-   <button class="breathe-tab" id="tabBreatheBox" type="button" role="tab" data-pattern="box">4-4-4-4 Box</button>
-   <button class="breathe-tab" id="tabBreatheCoherent" type="button" role="tab" data-pattern="coherent">5-5 Coherent</button>
+  <div class="breathe-tabs" role="tablist" aria-label="Breathing technique">
+   <button class="breathe-tab active" id="tabBreathe478" type="button" role="tab" aria-selected="true" data-pattern="4-7-8">4-7-8 Relax</button>
+   <button class="breathe-tab" id="tabBreatheBox" type="button" role="tab" aria-selected="false" data-pattern="box">4-4-4-4 Box</button>
+   <button class="breathe-tab" id="tabBreatheCoherent" type="button" role="tab" aria-selected="false" data-pattern="coherent">5-5 Coherent</button>
   </div>
   <p class="breathe-desc" id="breatheDesc">Vagal stimulation: long exhalation triggers parasympathetic recovery.</p>
 
@@ -460,12 +460,12 @@
    <div class="breathe-cycles" id="breatheCycles">Cycle 1</div>
   </div>
 
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">
+  <div class="breathe-footer">
    <label class="breathe-sound-toggle">
     <input type="checkbox" id="uBreatheAudio" checked switch role="switch">
     <span>Audio tone cues</span>
    </label>
-   <div style="display:flex;gap:8px">
+   <div class="breathe-footer-actions">
     <button class="btn" id="breatheActionBtn" type="button">Start</button>
     <button class="btn ghost" id="breatheDoneBtn" type="button">Done</button>
    </div>
@@ -474,6 +474,6 @@
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=0.7.9"></script>
+<script type="module" src="app.js?v=0.8.0"></script>
 </body>
 </html>

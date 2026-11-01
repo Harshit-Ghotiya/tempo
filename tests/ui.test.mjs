@@ -592,27 +592,40 @@ test('guided breathing coach (breathe.js): protocols, phase progress and cycle c
   assert.equal(pExhale.stepRemainingS, 4);
   assert.ok(pExhale.scale < 1.6 && pExhale.scale > 1.0);
 
-  // Lifecycle
+  // Lifecycle & pattern switching
   let tickCount = 0;
   let phaseChanges = 0;
+  let lastInfo = null;
   const coach = createBreathingCoach({
     patternKey: 'coherent',
-    onTick: () => { tickCount++; },
+    onTick: info => { tickCount++; lastInfo = info; },
     onPhaseChange: () => { phaseChanges++; }
   });
   assert.equal(coach.isActive(), false);
   coach.start();
   assert.equal(coach.isActive(), true);
   assert.ok(tickCount > 0);
+  assert.equal(lastInfo?.patternKey, 'coherent');
+
+  coach.setPattern('box');
+  assert.equal(coach.getPattern(), 'box');
+  assert.equal(lastInfo?.patternKey, 'box');
+  assert.equal(lastInfo?.stepKey, 'inhale');
 
   const summary = coach.stop();
   assert.equal(coach.isActive(), false);
   assert.ok(summary);
-  assert.equal(summary.patternKey, 'coherent');
+  assert.equal(summary.patternKey, 'box');
 });
 
-test('tensionOf: downward pitch and phone gaze attenuation suppresses false spikes', async () => {
-  const { tensionOf } = await import('../app.js');
+test('tensionOf and downLookOf: downward pitch and phone gaze attenuation suppresses false spikes', async () => {
+  const { tensionOf, downLookOf } = await import('../app.js');
+
+  // downLookOf helper checks pitch and vertical gaze delta against baseline
+  const baseRef = { pitch: { m: 0.30, s: 0.03 }, gy: { m: 0.50, s: 0.03 } };
+  assert.equal(downLookOf({ pitch: 0.32, gy: 0.52 }, baseRef), 0, 'small upright variation does not trigger downLook');
+  const dl = downLookOf({ pitch: 0.48, gy: 0.65 }, baseRef);
+  assert.ok(dl > 0.8 && dl <= 1.0, `downward pitch delta 0.18 produces strong attenuation factor: ${dl}`);
 
   // Neutral screen-facing baseline: lidTight = 2, lipTight = 2, browLower = -1.5, smile = -0.5
   const z = { lidTight: 2.0, lipTight: 2.0, browLower: -1.5, smile: -0.5, eyeWide: 0 };
@@ -622,4 +635,23 @@ test('tensionOf: downward pitch and phone gaze attenuation suppresses false spik
   // When looking down at phone, downLook = 1.0 attenuates positive lidTight, lipTight, browLower
   const rawDownLook = tensionOf(z, 0.9, 1.0);
   assert.ok(rawDownLook < rawUpright * 0.65, `downward gaze attenuated (${rawDownLook} < ${rawUpright * 0.65})`);
+
+  // Phase-contextual button visibility: Stroop only in stressor, Breathe only in recovery
+  const rStressor = document.querySelector('input[name=phase][value=stressor]');
+  rStressor.checked = true;
+  rStressor.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal($('btnStroop').hidden, false, 'Stroop button visible in Stressor phase');
+  assert.equal($('btnBreathe').hidden, true, 'Breathe button hidden in Stressor phase');
+
+  const rRecovery = document.querySelector('input[name=phase][value=recovery]');
+  rRecovery.checked = true;
+  rRecovery.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal($('btnStroop').hidden, true, 'Stroop button hidden in Recovery phase');
+  assert.equal($('btnBreathe').hidden, false, 'Breathe button visible in Recovery phase');
+
+  const rBaseline = document.querySelector('input[name=phase][value=baseline]');
+  rBaseline.checked = true;
+  rBaseline.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  assert.equal($('btnStroop').hidden, true, 'Stroop button hidden in Baseline phase');
+  assert.equal($('btnBreathe').hidden, true, 'Breathe button hidden in Baseline phase');
 });

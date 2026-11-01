@@ -1,94 +1,148 @@
-// ui.js: small DOM helpers for the Tempo portal. No camera or MediaPipe code, so Node + jsdom can test it.
-import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.7.9';
+// ui.js: DOM helpers, theme state, dialog management, and session summary renderer for Tempo.
+// Pure DOM manipulation without camera or MediaPipe dependencies so Node + JSDOM can test it directly.
+import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.8.0';
+
 export const $ = id => document.getElementById(id);
 export const stage = n => { document.body.dataset.stage = n; };
+
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const level = q => (q == null ? '' : q >= 0.6 ? 'good' : q >= 0.3 ? 'fair' : 'poor');
 
 let toastTimer;
 export function toast(msg, ms = 3400) {
   const t = $('toast');
-  t.textContent = msg; t.classList.add('on');
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), ms);
+  if (!t) return;
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), ms);
 }
 
-// Number that eases to its new value (instead of jumping); null shows a dash.
+// Smoothly eases a numeric readout to its new value; null/NaN renders an en-dash.
 export function tweenNum(el, to, dec = 0, ms = 600, fmt = null) {
-  if (to == null || !Number.isFinite(to)) { el.textContent = '–'; el._v = null; return; }
+  if (!el) return;
+  if (to == null || !Number.isFinite(to)) {
+    el.textContent = '–';
+    el._v = null;
+    return;
+  }
   const from = Number.isFinite(el._v) ? el._v : to;
-  let t0 = null; // first animation-frame timestamp, so one clock is used throughout
-  el._v = to; cancelAnimationFrame(el._r);
+  let t0 = null;
+  el._v = to;
+  cancelAnimationFrame(el._r);
   const format = typeof fmt === 'function' ? fmt : v => v.toFixed(dec);
-  if (calm() || from === to || ms <= 0 || typeof requestAnimationFrame !== 'function') { el.textContent = format(to); return; }
+  if (calm() || from === to || ms <= 0 || typeof requestAnimationFrame !== 'function') {
+    el.textContent = format(to);
+    return;
+  }
   const step = now => {
     t0 ??= now;
-    const k = Math.min(1, (now - t0) / ms), e = 1 - (1 - k) ** 3;
+    const k = Math.min(1, (now - t0) / ms);
+    const e = 1 - (1 - k) ** 3;
     el.textContent = format(from + (to - from) * e);
     if (k < 1) el._r = requestAnimationFrame(step);
   };
   el._r = requestAnimationFrame(step);
 }
 
-// Rolling line of values over the last 3 minutes (range fits the data, or is fixed); gaps over 6 s break the line. head marks the newest point.
+// Rolling sparkline over the last 3 minutes; gaps over 6 s break the path.
 export function drawSpark(path, head, series, now, { span = 180, w = 600, h = 130, fixed = null } = {}) {
-  if (!series.length) { path.setAttribute('d', ''); head.setAttribute('cx', -20); head.setAttribute('cy', -20); return; }
+  if (!series.length) {
+    path.setAttribute('d', '');
+    head.setAttribute('cx', -20);
+    head.setAttribute('cy', -20);
+    return;
+  }
   let lo, hi;
-  if (fixed) [lo, hi] = fixed;
-  else {
+  if (fixed) {
+    [lo, hi] = fixed;
+  } else {
     const ys = series.map(p => p.v);
-    lo = Math.min(...ys) - 5; hi = Math.max(...ys) + 5;
-    if (hi - lo < 24) { const m = (hi + lo) / 2; lo = m - 12; hi = m + 12; }
+    lo = Math.min(...ys) - 5;
+    hi = Math.max(...ys) + 5;
+    if (hi - lo < 24) {
+      const m = (hi + lo) / 2;
+      lo = m - 12;
+      hi = m + 12;
+    }
   }
   let d = '', prev = null, x = 0, y = 0;
   for (const p of series) {
-    x = w * (1 - (now - p.t) / span); y = h - 10 - (h - 20) * (Math.max(lo, Math.min(hi, p.v)) - lo) / (hi - lo);
+    x = w * (1 - (now - p.t) / span);
+    y = h - 10 - (h - 20) * (Math.max(lo, Math.min(hi, p.v)) - lo) / (hi - lo);
     d += (prev !== null && p.t - prev < 6 ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1);
     prev = p.t;
   }
   path.setAttribute('d', d);
-  head.setAttribute('cx', x.toFixed(1)); head.setAttribute('cy', y.toFixed(1));
+  head.setAttribute('cx', x.toFixed(1));
+  head.setAttribute('cy', y.toFixed(1));
 }
 
 export function buildRows(id, rows) {
-  $(id).innerHTML = rows.map(([k, l]) => `<div class="row na" data-k="${k}"><span class="lbl">${l}</span><div class="trk"><i></i></div><span class="val">–</span></div>`).join('');
+  const container = $(id);
+  if (!container) return;
+  container.innerHTML = rows
+    .map(([k, l]) => `<div class="row na" data-k="${k}"><span class="lbl">${l}</span><div class="trk"><i></i></div><span class="val">–</span></div>`)
+    .join('');
 }
 
-// Centered bar: left of the midline is below your baseline, right is above. z is clipped to +-3.
+// Centered change bar: left of midline is below personal baseline, right is above. z is clipped to [-3, +3].
 export function setRow(k, raw, z) {
   const r = document.querySelector(`.row[data-k="${k}"]`);
   if (!r) return;
-  const i = r.querySelector('i'), v = r.querySelector('.val');
+  const i = r.querySelector('i');
+  const v = r.querySelector('.val');
   if (z == null) {
-    r.classList.add('na'); delete r.dataset.dir; i.style.width = '0%';
-    v.textContent = raw == null ? '–' : 'no base'; r.title = raw == null ? 'No signal' : 'No baseline for this feature yet';
+    r.classList.add('na');
+    delete r.dataset.dir;
+    i.style.width = '0%';
+    v.textContent = raw == null ? '–' : 'no base';
+    r.title = raw == null ? 'No signal' : 'No baseline for this feature yet';
     return;
   }
   r.classList.remove('na');
   r.dataset.dir = z >= 0 ? 'up' : 'down';
   const c = Math.max(-3, Math.min(3, z));
-  i.style.left = (c < 0 ? 50 + c / 3 * 50 : 50) + '%'; i.style.width = Math.abs(c) / 3 * 50 + '%';
+  i.style.left = (c < 0 ? 50 + (c / 3) * 50 : 50) + '%';
+  i.style.width = (Math.abs(c) / 3) * 50 + '%';
   v.textContent = (z >= 0 ? '+' : '−') + Math.abs(z).toFixed(1);
   r.title = `value ${Number.isFinite(raw) ? raw.toFixed(2) : '–'}, z ${z.toFixed(2)}`;
 }
 
-export function setDot(el, q) { el.dataset.q = level(q); }
-export function ring(p) { $('ring').style.strokeDashoffset = String(339.3 * (1 - Math.max(0, Math.min(1, p)))); }
+export function setDot(el, q) {
+  if (el) el.dataset.q = level(q);
+}
 
-// Self-report sliders: a bar counts only once touched, so there is no default value to anchor on.
+export function ring(p) {
+  const r = $('ring');
+  if (r) r.style.strokeDashoffset = String(339.3 * (1 - Math.max(0, Math.min(1, p))));
+}
+
+// Self-report sliders: a bar counts only once touched so there is no default anchor bias.
 export function initRate(id) {
-  const i = $(id), r = i.closest('.rate'), o = r.querySelector('output');
+  const i = $(id);
+  if (!i) return;
+  const r = i.closest('.rate');
+  const o = r.querySelector('output');
   i.style.setProperty('--control-value', i.value);
   i.addEventListener('input', () => {
-    r.dataset.t = '1'; o.textContent = i.value;
+    r.dataset.t = '1';
+    o.textContent = i.value;
     i.style.setProperty('--control-value', i.value);
   });
 }
+
 export function resetRate(id) {
-  const i = $(id), r = i.closest('.rate');
-  i.value = 5; r.dataset.t = '0'; r.querySelector('output').textContent = '–';
+  const i = $(id);
+  if (!i) return;
+  const r = i.closest('.rate');
+  i.value = 5;
+  r.dataset.t = '0';
+  r.querySelector('output').textContent = '–';
   i.style.setProperty('--control-value', '5');
 }
-export const touched = id => $(id).closest('.rate').dataset.t === '1';
+
+export const touched = id => $(id)?.closest('.rate')?.dataset.t === '1';
 
 export function nextScheme(stored, systemDark) {
   const rendered = stored ?? (systemDark ? 'dark' : 'light');
@@ -127,13 +181,17 @@ export function initTheme(btn) {
 }
 
 export function drawer(open) {
-  $('drawer').classList.toggle('open', open); $('scrim').classList.toggle('open', open);
-  $('drawer').setAttribute('aria-hidden', String(!open));
-  if (open) $('rStress').focus({ preventScroll: true });
+  const dr = $('drawer'), sc = $('scrim');
+  if (!dr || !sc) return;
+  dr.classList.toggle('open', open);
+  sc.classList.toggle('open', open);
+  dr.setAttribute('aria-hidden', String(!open));
+  if (open) $('rStress')?.focus({ preventScroll: true });
 }
 
 // Light coach and pulse heuristics
 export const LIGHT = { DIM_LUMA: 70, WARM_RG: 1.75 };
+
 export function lightOf(samples, now, spanMs = 2000) {
   if (!samples || !samples.length) return null;
   const cutoff = now - spanMs;
@@ -141,7 +199,10 @@ export function lightOf(samples, now, spanMs = 2000) {
   for (let i = samples.length - 1; i >= 0; i--) {
     const s = samples[i];
     if (s.t < cutoff) break;
-    r += s.r; g += s.g; b += s.b; n++;
+    r += s.r;
+    g += s.g;
+    b += s.b;
+    n++;
   }
   if (!n) return null;
   const mr = r / n, mg = g / n, mb = b / n;
@@ -161,12 +222,17 @@ export function lightTip(l) {
 export function hrView(last, now, holdS = 10) {
   if (!last) return { v: null, state: 'none', age: null };
   const age = now - last.t;
-  return age <= 2 ? { v: last.v, state: 'live', age } : age <= holdS ? { v: last.v, state: 'held', age } : { v: null, state: 'none', age };
+  return age <= 2
+    ? { v: last.v, state: 'live', age }
+    : age <= holdS
+      ? { v: last.v, state: 'held', age }
+      : { v: null, state: 'none', age };
 }
 
-export const hrvShown = (hrv, q) => Number.isFinite(hrv) && hrv >= 15 && hrv <= 200 && (q ?? 0) >= 0.30 ? hrv : null;
+export const hrvShown = (hrv, q) =>
+  Number.isFinite(hrv) && hrv >= 15 && hrv <= 200 && (q ?? 0) >= 0.30 ? hrv : null;
 
-// Modal dialog helpers
+// Modal dialog helpers (<dialog closedby="any"> with fallback)
 export function openDialog(d) {
   if (!d) return;
   if (typeof d.showModal === 'function') {
@@ -183,12 +249,19 @@ export function closeDialog(d) {
   } else {
     d.removeAttribute('open');
     const Ev = d.ownerDocument?.defaultView?.Event || globalThis.window?.Event;
-    if (Ev) try { d.dispatchEvent(new Ev('close')); } catch (e) {}
+    if (Ev) {
+      try { d.dispatchEvent(new Ev('close')); } catch (e) {}
+    }
   }
 }
 
 export function setupDialogDismiss(d) {
-  if (!d || 'closedBy' in d) return;
+  if (!d) return;
+  const hasNativeClosedBy =
+    (typeof HTMLDialogElement !== 'undefined' && 'closedBy' in HTMLDialogElement.prototype) ||
+    'closedBy' in d;
+  if (hasNativeClosedBy) return;
+
   d.addEventListener('click', e => {
     if (e.target !== d) return;
     const rect = d.getBoundingClientRect();
@@ -307,7 +380,6 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     const xOf = t => padL + (Math.max(0, Math.min(maxT, t)) / maxT) * (W - padL - padR);
     const yOf = v => padT + ((hi - Math.max(lo, Math.min(hi, v))) / (hi - lo || 1)) * (H - padT - padB);
 
-    // Phase background tints
     let phaseRects = '';
     const phaseChanges = [];
     let curP = null;
@@ -326,15 +398,12 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       phaseRects += `<text x="${(x1 + 6).toFixed(1)}" y="${padT + 14}" fill="var(--text-3)" font-size="10" font-weight="600" text-transform="uppercase">${pc.phase}</text>`;
     }
 
-    // Zero line
     const y0 = yOf(0);
     const zeroLine = `<line x1="${padL}" y1="${y0.toFixed(1)}" x2="${W - padR}" y2="${y0.toFixed(1)}" stroke="var(--text-3)" stroke-dasharray="3 4" opacity="0.5"/>`;
 
-    // Segments and path
     const segs = segments(valid.map(r => ({ t: r.t, v: r.tension_idx })));
     const pathD = segs.map(s => smoothPath(s.map(pt => ({ x: xOf(pt.t), y: yOf(pt.v) })))).join(' ');
 
-    // Check-in markers
     let checkMarks = '';
     const reps = (stats || []).map(s => s.report).filter(Boolean);
     for (const rep of reps) {
@@ -350,8 +419,9 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       `;
     }
 
-    // Time axis ticks
-    const t0 = '0:00', tMid = `${Math.floor(maxT / 120)}:${String(Math.floor((maxT / 2) % 60)).padStart(2, '0')}`, tEnd = `${Math.floor(maxT / 60)}:${String(Math.floor(maxT % 60)).padStart(2, '0')}`;
+    const t0 = '0:00';
+    const tMid = `${Math.floor(maxT / 120)}:${String(Math.floor((maxT / 2) % 60)).padStart(2, '0')}`;
+    const tEnd = `${Math.floor(maxT / 60)}:${String(Math.floor(maxT % 60)).padStart(2, '0')}`;
     const timeAxis = `
       <text x="${padL}" y="${H - 10}" fill="var(--text-3)" font-size="10">${t0}</text>
       <text x="${W / 2}" y="${H - 10}" fill="var(--text-3)" font-size="10" text-anchor="middle">${tMid}</text>
@@ -398,4 +468,3 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     sumChecks.innerHTML = rowsHtml + noteHtml;
   }
 }
-
