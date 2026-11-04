@@ -1,8 +1,23 @@
 # Guṇa Multimodal ML Project — Claude Handoff
 
-**Project version:** v0.8.0 (production-grade modular refactoring, modal overscroll containment, breathing coach UX polish, and downward pitch helper)  
-**Date:** 2026-11-01  
+**Project version:** v0.8.0 (repository release documentation, TA evaluation guide, and package script polish)  
+**Date:** 2026-11-04  
 **Purpose:** This document is the source-of-truth handoff for continuing development in Claude.
+
+---
+
+## v0.8.0 release update (2026-11-04): TA evaluation guide, package scripts, and production README (feat/stroop-mesh-stress-vectors)
+
+Changed
+1. `README.md`:
+   - Overhauled into a publication-grade academic repository README with status badges, 3-minute evaluation walkthrough for TAs, Triguna physiological framework table, personal baseline Z-score rationale, downward-pitch attenuation notes, test suite documentation, and architecture layout.
+2. `package.json`:
+   - Added standard npm lifecycle scripts (`npm test`, `npm run check`, `npm start`) and project metadata so evaluators can run tests and syntax checks with standard tooling.
+3. `docs/`:
+   - Added comprehensive TA viva cheatsheet and presentation guide (`Tempo_Project_Explanation_and_TA_Viva_Guide.pdf` and `.html`) covering plain-English concepts, 7-slide deck structure, and spoken evaluation answers.
+
+Checked: `npm run check`; `npm test` (35 tests pass).  
+Not checked: execution on live multi-subject cohort; packaged native macOS universal bundle.
 
 ---
 
