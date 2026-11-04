@@ -22,10 +22,10 @@ Tempo requires **no backend, no database, and no cloud setup**. You can run and 
 ./installation
 
 # 2. Whenever you want to launch Tempo (starts server & opens browser automatically)
-./Tempo_run
+./tempo_run
 ```
 
-*(You can also run them with `bash installation.sh` and `bash Tempo_run.sh`)*
+*(Works as `./tempo_run`, `./Tempo_run`, `bash installation.sh`, or `bash Tempo_run.sh`)*
 
 ---
 
