@@ -15,6 +15,12 @@ launcher/site/
 launcher/tempo-launcher
 __alive
 
+# private student notes & viva guides
+docs/*Viva*
+docs/*Cheat*
+docs/*viva*
+docs/*cheat*
+
 # secrets and OS noise
 .env
 *.pem

@@ -160,7 +160,6 @@ tempo/
 │   └── hr.test.mjs       # Synthetic pulse wave physiological verification
 ├── launcher/             # Go-based standalone cross-platform offline executable builder
 └── docs/
-    ├── Tempo_Project_Explanation_and_TA_Viva_Guide.pdf  # Comprehensive viva & presentation guide
     ├── STUDY_PROTOCOL.md                               # 3-phase experimental data collection protocol
     ├── DATA_SCHEMA.md                                  # Schema for exported CSV columns
     └── ROADMAP.md                                      # Architectural decisions & changelog
@@ -168,11 +167,11 @@ tempo/
 
 ---
 
-## 📖 Evaluation Resources for Students & TAs
+## 📖 Project Documentation & Research Protocol
 
-* **[TA Viva Cheat Sheet & Presentation Guide (PDF)](docs/Tempo_Project_Explanation_and_TA_Viva_Guide.pdf)**: A 6-page plain-English guide covering core concepts, slide deck outlines, and word-for-word answers to typical evaluation questions.
 * **[Study Protocol](STUDY_PROTOCOL.md)**: Standardized 3-phase experimental procedure for multi-subject data collection.
 * **[Data Schema](DATA_SCHEMA.md)**: Full definition of all 28 exported biometric telemetry columns.
+* **[Roadmap & Design Decisions](ROADMAP.md)**: Architectural evolution, prior literature, and source citations.
 
 ---
 

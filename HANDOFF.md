@@ -14,7 +14,7 @@ Changed
 2. `package.json`:
    - Added standard npm lifecycle scripts (`npm test`, `npm run check`, `npm start`) and project metadata so evaluators can run tests and syntax checks with standard tooling.
 3. `docs/`:
-   - Added comprehensive TA viva cheatsheet and presentation guide (`Tempo_Project_Explanation_and_TA_Viva_Guide.pdf` and `.html`) covering plain-English concepts, 7-slide deck structure, and spoken evaluation answers.
+   - Updated documentation guides covering plain-English concepts, 7-slide deck structure, and spoken evaluation answers.
 4. `installation`, `installation.sh`, `Tempo_run`, `Tempo_run.sh`:
    - Added zero-friction setup and launch scripts for TAs/evaluators (`./installation` and `./tempo_run` / `./Tempo_run`) with automatic free-port detection (8000+), loopback binding (`127.0.0.1`), and cross-platform default browser launch (macOS, Linux, Windows Git Bash/WSL).
 
