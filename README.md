@@ -15,7 +15,21 @@
 
 Tempo requires **no backend, no database, and no cloud setup**. You can run and evaluate the complete system in under a minute using any modern web browser (Google Chrome, Microsoft Edge, or Brave recommended).
 
-### Option 1: Python HTTP Server (Universal — Recommended)
+### 🚀 Easiest Way: Automated Scripts
+
+```bash
+# 1. First-time setup (verifies Python, optional test dependencies)
+./installation
+
+# 2. Whenever you want to launch Tempo (starts server & opens browser automatically)
+./Tempo_run
+```
+
+*(You can also run them with `bash installation.sh` and `bash Tempo_run.sh`)*
+
+---
+
+### Alternative Manual Startup
 
 Because modern web browsers restrict camera access and WebAssembly ES modules over `file:///` URLs, run a lightweight local HTTP server from the project root:
 
