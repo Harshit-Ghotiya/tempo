@@ -11,14 +11,20 @@ echo "  Tempo: Installation & Environment Check    "
 echo "============================================="
 
 # Ensure scripts are executable
-chmod +x "$DIR/Tempo_run" "$DIR/Tempo_run.sh" "$DIR/installation" "$DIR/installation.sh" 2>/dev/null || true
+chmod +x "$DIR/tempo_run" "$DIR/tempo_run.sh" "$DIR/Tempo_run" "$DIR/Tempo_run.sh" "$DIR/installation" "$DIR/installation.sh" 2>/dev/null || true
 
-# On case-sensitive filesystems (e.g., Linux), create lowercase aliases so both ./tempo_run and ./Tempo_run work
-if [ ! -e "$DIR/tempo_run" ]; then
+# On case-sensitive filesystems (e.g., Linux), create aliases so both ./tempo_run and ./Tempo_run work
+if [ -e "$DIR/tempo_run" ] && [ ! -e "$DIR/Tempo_run" ]; then
+    cp "$DIR/tempo_run" "$DIR/Tempo_run" 2>/dev/null || true
+    chmod +x "$DIR/Tempo_run" 2>/dev/null || true
+elif [ -e "$DIR/Tempo_run" ] && [ ! -e "$DIR/tempo_run" ]; then
     cp "$DIR/Tempo_run" "$DIR/tempo_run" 2>/dev/null || true
     chmod +x "$DIR/tempo_run" 2>/dev/null || true
 fi
-if [ ! -e "$DIR/tempo_run.sh" ]; then
+if [ -e "$DIR/tempo_run.sh" ] && [ ! -e "$DIR/Tempo_run.sh" ]; then
+    cp "$DIR/tempo_run.sh" "$DIR/Tempo_run.sh" 2>/dev/null || true
+    chmod +x "$DIR/Tempo_run.sh" 2>/dev/null || true
+elif [ -e "$DIR/Tempo_run.sh" ] && [ ! -e "$DIR/tempo_run.sh" ]; then
     cp "$DIR/Tempo_run.sh" "$DIR/tempo_run.sh" 2>/dev/null || true
     chmod +x "$DIR/tempo_run.sh" 2>/dev/null || true
 fi
@@ -54,5 +60,5 @@ echo ""
 echo "============================================="
 echo "  Setup Complete!                            "
 echo "  To launch Tempo, simply run:               "
-echo "    ./tempo_run   (or ./Tempo_run)           "
+echo "    ./tempo_run                              "
 echo "============================================="
