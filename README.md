@@ -25,7 +25,8 @@ Tempo requires **no backend, no database, and no cloud setup**. You can run and 
 ./tempo_run
 ```
 
-*(Works as `./tempo_run`, `./Tempo_run`, `bash installation.sh`, or `bash Tempo_run.sh`)*
+* **macOS / Linux / Windows Git Bash**: run `./installation` and `./tempo_run` (or `bash installation.sh` / `bash tempo_run.sh`).
+* **Windows Command Prompt / File Explorer**: double-click `installation.bat` and `tempo_run.bat`.
 
 ---
 

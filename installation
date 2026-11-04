@@ -34,9 +34,11 @@ if command -v python3 >/dev/null 2>&1; then
     PY="python3"
 elif command -v python >/dev/null 2>&1; then
     PY="python"
+elif command -v py >/dev/null 2>&1; then
+    PY="py"
 else
-    echo "⚠️ Warning: Neither python3 nor python was found in PATH."
-    echo "   Please install Python (3.9+) to run the local server."
+    echo "⚠️ Warning: Python was not found in PATH."
+    echo "   Please install Python (3.9+) from python.org to run the local server."
 fi
 
 if [ -n "$PY" ]; then

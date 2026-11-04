@@ -6,11 +6,13 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$DIR"
 
-# Detect Python command (python3 or python)
+# Detect Python command (python3, python, or py)
 if command -v python3 >/dev/null 2>&1; then
     PY="python3"
 elif command -v python >/dev/null 2>&1; then
     PY="python"
+elif command -v py >/dev/null 2>&1; then
+    PY="py"
 else
     echo "❌ Error: Python is not installed or not in PATH."
     echo "   Please install Python 3 (python.org) or run with Node: npx serve -l 8000"
@@ -43,10 +45,10 @@ echo "============================================="
         open "$URL"                        # macOS
     elif command -v xdg-open >/dev/null 2>&1; then
         xdg-open "$URL"                    # Linux
-    elif command -v start >/dev/null 2>&1; then
-        start "$URL"                       # Windows (Git Bash / MSYS)
     elif command -v cmd.exe >/dev/null 2>&1; then
-        cmd.exe /c start "$URL" >/dev/null 2>&1  # Windows WSL
+        cmd.exe /c start "" "$URL" >/dev/null 2>&1  # Windows (Git Bash / WSL)
+    elif command -v start >/dev/null 2>&1; then
+        start "$URL"                       # Windows fallback
     fi
 ) &
 
