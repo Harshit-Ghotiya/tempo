@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")"
 mkdir -p site dist
-cp ../index.html ../app.js ../hr.js ../ui.js site/
+cp ../index.html ../styles.css ../app.js ../hr.js ../ui.js ../affect.js ../voice.js ../chart.js ../summary.js ../stroop.js ../breathe.js ../preset_models.json site/
 [ -f site/vendor/mediapipe/vision_bundle.mjs ] || sh fetch_vendor.sh
 build() { GOOS=$1 GOARCH=$2 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "dist/$3" .; }
 build windows amd64 Tempo.exe

@@ -12,6 +12,8 @@ artifacts/
 # build output (recreated by launcher/build.sh)
 launcher/dist/
 launcher/site/
+launcher/tempo-launcher
+__alive
 
 # secrets and OS noise
 .env
