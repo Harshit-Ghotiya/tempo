@@ -38,7 +38,7 @@ os.chmod(app / "MacOS" / "Tempo", 0o755)
 (app / "Info.plist").write_bytes(plistlib.dumps({
     "CFBundleName": "Tempo", "CFBundleDisplayName": "Tempo", "CFBundleIdentifier": "org.tempo.stress-signals",
     "CFBundleExecutable": "Tempo", "CFBundlePackageType": "APPL", "CFBundleInfoDictionaryVersion": "6.0",
-    "CFBundleVersion": "0.6", "CFBundleShortVersionString": "0.6", "LSMinimumSystemVersion": "11.0",
+    "CFBundleVersion": "0.8.5", "CFBundleShortVersionString": "0.8.5", "LSMinimumSystemVersion": "11.0",
     "LSBackgroundOnly": True,  # no window or Dock icon of its own; the portal opens in your browser
     "NSHighResolutionCapable": True}))
 (app / "PkgInfo").write_bytes(b"APPL????")
@@ -48,5 +48,10 @@ if rc:
     subprocess.run([rc, "sign", str(out / "Tempo.app")], check=True)
     print("ad-hoc signed with rcodesign")
 else:
-    print("WARNING: rcodesign not found, the app is unsigned (Apple silicon may report it as damaged)")
+    cs = shutil.which("codesign")
+    if cs:
+        subprocess.run([cs, "-s", "-", "--force", "--deep", str(out / "Tempo.app")], check=True)
+        print("ad-hoc signed with native macOS codesign")
+    else:
+        print("WARNING: no codesign utility found, the app is unsigned")
 print("built", out / "Tempo.app")

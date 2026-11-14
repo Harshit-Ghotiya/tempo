@@ -42,7 +42,8 @@ The nearest later report wins if several qualify. No label is carried forward.
 ## v0.6 additions
 - Face features are action-unit composites of MediaPipe blendshape scores, averaged over the 10 s window: browLower (AU4), browRaise (AU1/2), lidTight (AU7), eyeWide (AU5), lipTight (AU23/24 plus lip rolls), lipDown (AU15), smile (AU12). `expressivity` is the mean standard deviation of those composites (how much the face moves). The old `brow` and `lip` columns are gone.
 - Baselines use per-feature minimum spreads (FLOOR in app.js), so near-zero blendshape scores no longer make ordinary movement look extreme.
-- `tension_idx`: prior-weighted facial tension index (positive = more tension relative to the person's own baseline). Weights are literature-based priors, not fitted. Blank when the face signal is unusable.
+- `tension_idx`: facial tension index (positive = more tension relative to the person's own baseline). Uses the literature-based priors unless the loaded models.json carries a `stress_tension` model validated on >= 20 participants with `vs_phase < 0`; then it is the fitted stress_delta prediction in SDs of the model's predictions, clipped to +-3. Blank when the face signal is unusable.
+- `tension_source`: `prior` or `fitted`, the weights that produced `tension_idx` on this row. Never train on `tension_idx`.
 - The oximeter columns planned for v0.5 (`ref_hr`, `ref_hr_age_s`) are not exported: that work is deferred.
 
 ## v0.7 additions

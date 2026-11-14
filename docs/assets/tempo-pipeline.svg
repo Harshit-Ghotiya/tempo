@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 340" width="920" height="340" role="img" aria-label="Tempo On-Device Multimodal Stress and Affect Pipeline">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#475569"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#2563EB"/>
+    </marker>
+    <style>
+      .title { font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #0F172A; }
+      .subtitle { font: 500 11.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #475569; }
+      .lane-lbl { font: 700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; letter-spacing: 0.6px; }
+      .box-t { font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #0F172A; }
+      .box-s { font: 500 10.2px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #334155; }
+      .mono { font: 600 9.8px "SF Mono", Menlo, Consolas, monospace; fill: #1E293B; }
+      .pill { font: 700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    </style>
+  </defs>
+
+  <!-- Card backdrop (readable in GitHub Light and Dark themes) -->
+  <rect x="0" y="0" width="920" height="340" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.2"/>
+
+  <!-- Header -->
+  <text x="24" y="30" class="title">TEMPO v0.8.5 — On-Device Privacy-Preserving Multimodal Architecture</text>
+  <text x="24" y="47" class="subtitle">Zero-cloud browser perception (WebAssembly) paired with Leave-One-Participant-Out (LOPO) dual-baseline validation</text>
+
+  <!-- Privacy Badge -->
+  <rect x="706" y="16" width="190" height="26" rx="13" fill="#DCFCE7" stroke="#86EFAC"/>
+  <text x="801" y="33" text-anchor="middle" class="pill" fill="#166534">100% ON-DEVICE · ZERO VIDEO UPLOAD</text>
+
+  <!-- Lane 1: Real-Time Browser Pipeline -->
+  <rect x="20" y="64" width="880" height="122" rx="10" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="34" y="83" class="lane-lbl" fill="#4F46E5">STAGE 1 · REAL-TIME IN-BROWSER PIPELINE (WASM + WEBAUDIO)</text>
+
+  <!-- Box 1: Capture -->
+  <rect x="34" y="95" width="145" height="76" rx="8" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.2"/>
+  <text x="106.5" y="115" text-anchor="middle" class="box-t">Webcam &amp; Clock</text>
+  <text x="106.5" y="131" text-anchor="middle" class="box-s">MediaPipe Wasm v0.10</text>
+  <text x="106.5" y="145" text-anchor="middle" class="box-s">478 3D Landmarks</text>
+  <text x="106.5" y="159" text-anchor="middle" class="box-s">52 Blendshapes + Pose</text>
+
+  <line x1="179" y1="133" x2="203" y2="133" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 2: Feature Engineering & Calibration -->
+  <rect x="205" y="95" width="215" height="76" rx="8" fill="#F0FDFA" stroke="#5EEAD4" stroke-width="1.2"/>
+  <text x="312.5" y="115" text-anchor="middle" class="box-t">Biomechanics &amp; Calibration</text>
+  <text x="312.5" y="131" text-anchor="middle" class="box-s">7 FACS AUs + Blink + Gaze + Pose</text>
+  <text x="312.5" y="145" text-anchor="middle" class="box-s">Down-Pitch Attenuation (downLookOf)</text>
+  <text x="312.5" y="159" text-anchor="middle" class="mono">60s Median/MAD + FLOOR_k</text>
+
+  <line x1="420" y1="133" x2="444" y2="133" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 3: 3-ROI rPPG -->
+  <rect x="446" y="95" width="215" height="76" rx="8" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.2"/>
+  <text x="553.5" y="115" text-anchor="middle" class="box-t">Experimental 3-ROI rPPG</text>
+  <text x="553.5" y="131" text-anchor="middle" class="box-s">YCbCr Skin + POS (Wang 2017)</text>
+  <text x="553.5" y="145" text-anchor="middle" class="box-s">1s Block/Tail Motion Rejection</text>
+  <text x="553.5" y="159" text-anchor="middle" class="box-s">Gaussian Tracker + MAD RMSSD</text>
+
+  <line x1="661" y1="133" x2="685" y2="133" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 4: On-Device Fusion & UI -->
+  <rect x="687" y="95" width="198" height="76" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.2"/>
+  <text x="786" y="115" text-anchor="middle" class="box-t">Live Tension &amp; Opinion Pool</text>
+  <text x="786" y="131" text-anchor="middle" class="box-s">4 Hz Live Trend + Stroop / Breathe</text>
+  <text x="786" y="145" text-anchor="middle" class="box-s">SNR-Gated Log-Linear Fusion</text>
+  <text x="786" y="159" text-anchor="middle" class="mono">Opt-in CSV Export (Numbers Only)</text>
+
+  <!-- Connector from Lane 1 Export down to Lane 2 -->
+  <path d="M 786 171 L 786 202 L 106 202 L 106 226" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-blue)"/>
+  <rect x="330" y="191" width="250" height="18" rx="9" fill="#DBEAFE" stroke="#93C5FD"/>
+  <text x="455" y="203" text-anchor="middle" class="pill" fill="#1E40AF">DERIVED FEATURES CSV · NO VIDEO EVER EXPORTED</text>
+
+  <!-- Lane 2: Offline ML & Validation -->
+  <rect x="20" y="216" width="880" height="106" rx="10" fill="#FFFFFF" stroke="#E2E8F0"/>
+  <text x="34" y="235" class="lane-lbl" fill="#2563EB">STAGE 2 · OFFLINE TRAINING, VALIDATION &amp; QUALITY AUDITS (PYTHON)</text>
+
+  <!-- Box 5: Audits -->
+  <rect x="34" y="246" width="200" height="64" rx="8" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.2"/>
+  <text x="134" y="264" text-anchor="middle" class="box-t">Feature &amp; AU Audits</text>
+  <text x="134" y="279" text-anchor="middle" class="box-s">Directional Stress Concordance</text>
+  <text x="134" y="293" text-anchor="middle" class="box-s">7-AU Posed Selectivity &amp; Leak</text>
+
+  <line x1="234" y1="278" x2="262" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 6: LOPO Models -->
+  <rect x="264" y="246" width="218" height="64" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.2"/>
+  <text x="373" y="264" text-anchor="middle" class="box-t">LOPO Cross-Validation</text>
+  <text x="373" y="279" text-anchor="middle" class="box-s">Primary: Ridge (stress_delta)</text>
+  <text x="373" y="293" text-anchor="middle" class="box-s">Secondary: Softmax Triguna Pool</text>
+
+  <line x1="482" y1="278" x2="510" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 7: Dual Baselines -->
+  <rect x="512" y="246" width="186" height="64" rx="8" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.2"/>
+  <text x="605" y="264" text-anchor="middle" class="box-t">Dual-Baseline Gate</text>
+  <text x="605" y="279" text-anchor="middle" class="box-s">Constant + Phase-Mean (vs_phase)</text>
+  <text x="605" y="293" text-anchor="middle" class="box-s">Bootstrap CIs + Permutations</text>
+
+  <line x1="698" y1="278" x2="726" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- Box 8: Model Export -->
+  <rect x="728" y="246" width="157" height="64" rx="8" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.2"/>
+  <text x="806.5" y="264" text-anchor="middle" class="box-t">Portal Weight Gate</text>
+  <text x="806.5" y="279" text-anchor="middle" class="mono">N &gt;= 20 &amp; vs_phase &lt; 0</text>
+  <text x="806.5" y="293" text-anchor="middle" class="box-s">Else keep prior weights</text>
+</svg>

@@ -1,6 +1,6 @@
 {
   "name": "tempo",
-  "version": "0.8.0",
+  "version": "0.8.5",
   "description": "On-device, privacy-preserving stress signal detection and Triguna estimation for IKO 103",
   "private": true,
   "type": "module",

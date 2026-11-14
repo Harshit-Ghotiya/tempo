@@ -1,190 +1,179 @@
-# Tempo: On-Device Stress-Signal Portal & Indic Triguna Estimation
+<div align="center">
 
-[![Version](https://img.shields.io/badge/version-v0.8.0-blue.svg)](VERSION.txt)
-[![Course](https://img.shields.io/badge/course-IKO_103_Holistic_Wellbeing-indigo.svg)](STUDY_PROTOCOL.md)
-[![Institution](https://img.shields.io/badge/institution-IIT_Roorkee-orange.svg)](https://www.iitr.ac.in)
-[![Privacy](https://img.shields.io/badge/privacy-100%25_On--Device_Local-brightgreen.svg)](#privacy-invariant)
-[![Tests](https://img.shields.io/badge/tests-35_passed-success.svg)](#testing--verification)
-[![License](https://img.shields.io/badge/license-Academic_Evaluation-lightgrey.svg)](#academic-context)
+# Tempo
 
-> **Tempo** is a privacy-first, on-device bio-signal portal that estimates real-time psychological stress from webcam facial movements, posture, and physiology. Instead of applying rigid universal thresholds, Tempo continuously scores changes against each individual's **calibrated personal baseline**, contextualizing stress responses through the Indic framework of **Triguna** (*Sattva*, *Rajas*, *Tamas*).
+**Privacy-Preserving On-Device Multimodal Stress & Affect Estimation**
+
+[![Version](https://img.shields.io/badge/version-v0.8.5-2563EB.svg)](VERSION.txt)
+[![Tests](https://img.shields.io/badge/tests-49_passed-16A34A.svg)](#testing--verification)
+[![Privacy](https://img.shields.io/badge/privacy-100%25_On--Device_Wasm-0D9488.svg)](#privacy-invariant)
+[![Course](https://img.shields.io/badge/course-IKO_103_·_IIT_Roorkee-4F46E5.svg)](STUDY_PROTOCOL.md)
+[![Validation](https://img.shields.io/badge/validation-LOPO_Dual--Baseline-D97706.svg)](#quantitative-benchmarks-synthetic-v085)
+
+*Zero-cloud webcam & pose perception in WebAssembly + robust within-subject calibration + Leave-One-Participant-Out ML evaluation.*
+
+[Quick Start](#-quick-start) · [Architecture](#-system-architecture) · [Math & Calibration](#-mathematical-pipeline) · [Benchmarks](#-quantitative-benchmarks-synthetic-v085) · [Project Structure](#-project-structure)
+
+</div>
 
 ---
 
-## ⚡ Quick Start for Evaluators & TAs
+> **Scientific Honesty (`CLAUDE.md`):** Predicting self-reported change-from-baseline stress (`stress_delta`) is the primary supervised target. Compositional Triguna (*Sattva*, *Rajas*, *Tamas*) is a secondary course-demo layer (`DEMO_GUNA = false` by default). The default portal tension weights (`TENSION` in [`app.js`](app.js)) are unvalidated priors and are dynamically swapped for LOPO-fitted weights **only** when `N >= 20` and `vs_phase < 0`. Quantitative numbers below come from automated synthetic benchmarks (`49/49` JS tests + `20`-participant synthetic LOPO runs); multi-participant real-face cohort studies remain ongoing.
 
-Tempo requires **no backend, no database, and no cloud setup**. You can run and evaluate the complete system in under a minute using any modern web browser (Google Chrome, Microsoft Edge, or Brave recommended).
+---
 
-### 🚀 Easiest Way: Automated Scripts
+## 🧭 System Architecture
 
-```bash
-# 1. First-time setup (verifies Python, optional test dependencies)
-./installation
+Tempo processes all camera frames locally in volatile browser RAM via **MediaPipe WebAssembly** (`FaceLandmarker` + `PoseLandmarker`), extracts 15 biomechanically grounded features relative to each person's own 60 s resting baseline, and exports **only derived numerical telemetry** when the user explicitly clicks **Export CSV** for offline **Leave-One-Participant-Out (LOPO)** evaluation in Python.
 
-# 2. Whenever you want to launch Tempo (starts server & opens browser automatically)
-./tempo_run
+<p align="center">
+  <img src="docs/assets/tempo-pipeline.svg" alt="Tempo On-Device Multimodal Architecture" width="100%"/>
+</p>
+
+```mermaid
+flowchart LR
+  A["Webcam + Web Worker Clock"] --> B["MediaPipe Wasm\n478 Landmarks + 52 Blendshapes + Pose"]
+  B --> C["15 Biomechanical Features\n7 FACS AUs · Blink · Gaze · Pose"]
+  B --> D["3-ROI POS rPPG (Experimental)\nForehead + L/R Cheek · Block Motion Guard"]
+  C --> E["60s Median/MAD Calibration\n+ Down-Pitch Attenuation"]
+  D --> F["SNR-Gated Log-Linear Opinion Pool\n+ Gaussian Tracker & MAD RMSSD"]
+  E --> F
+  F --> G["Live 4 Hz Trend · Stroop · Guided Breathing"]
+  F -. "Opt-in Export CSV\n(Numbers Only)" .-> H["Offline Python Suite\nAudits + LOPO Ridge & Softmax"]
 ```
 
-* **macOS / Linux / Windows Git Bash**: run `./installation` and `./tempo_run` (or `bash installation.sh` / `bash tempo_run.sh`).
-* **Windows Command Prompt / File Explorer**: double-click `installation.bat` and `tempo_run.bat`.
-
 ---
 
-### Alternative Manual Startup
+## ⚡ Quick Start
 
-Because modern web browsers restrict camera access and WebAssembly ES modules over `file:///` URLs, run a lightweight local HTTP server from the project root:
+Tempo requires **no backend, no database, and no API keys**. Because browsers restrict camera access and ES modules over `file:///`, launch via a local HTTP server from the project root:
 
+### 1. Run the Browser Portal
 ```bash
-# 1. Start local server
+# Option A: Python built-in server (zero dependencies)
 python3 -m http.server 8000
+# Open http://localhost:8000 in Chrome, Edge, or Brave
 
-# 2. Open in your browser
-# Navigate to http://localhost:8000
+# Option B: One-command automated setup & launch scripts
+./installation && ./tempo_run
+# Windows: double-click installation.bat then tempo_run.bat
 ```
 
-### Option 2: Node.js
-
+### 2. Run the Automated Test Suite (Node.js 22+)
 ```bash
-# Install dependencies & run test suite
-npm install
-npm test
-
-# Launch local server
-npm start
-# Open http://localhost:8000
+npm ci
+npm run check   # Strict syntax check across all 9 JS modules
+npm test        # 49/49 unit, DOM contract, rPPG, and dropout tests
 ```
 
-### Option 3: Pre-compiled Standalone Launcher (Zero-Install)
-If you prefer a 1-click native launcher that embeds the server and automatically opens the browser:
-* **Windows**: Run `launcher/dist/Tempo.exe`
-* **macOS / Linux**: Build with `cd launcher && sh build.sh`, then run `./tempo-launcher`
+### 3. Run the Python Audit & LOPO Training Pipeline
+```bash
+pip install -r requirements.txt
+mkdir -p data
+python3 tools/make_synthetic.py signal data/sessions.csv
+python3 tools/audit_features.py data/sessions.csv
+python3 train_guna.py
+```
+
+### 4. Interactive 3-Minute Evaluation Walkthrough
+| Phase | Duration | What Happens |
+| :--- | :--- | :--- |
+| **1. Baseline** | `20s` settle + `60s` cal | Captures resting facial & postural baseline (`Median` + `1.4826 · MAD` with variance `FLOOR_k`) |
+| **2. Stressor** | `~90s` | Built-in **7-Color Rotating Stroop** challenge (`stroop.js`); tracks brow furrow (`AU4`), lid tightening (`AU7`), blink suppression, and interference latency |
+| **3. Recovery** | `~90s` | **Guided Breathing Coach** (`breathe.js`: `4-7-8`, `Box`, `5-5` Coherent); monitors parasympathetic recovery toward baseline |
+| **4. Summary** | End | View phase-by-phase directional agreement (`summary.js`) and optionally export derived telemetry CSV |
 
 ---
 
-## 🎯 How to Evaluate in 3 Minutes
+## 🔬 Mathematical Pipeline
 
-Once the portal is open in your browser, follow this evaluation walkthrough:
+### Within-Subject Robust Baseline Calibration (`app.js`)
+Static population thresholds misclassify neutral facial anatomy (e.g., naturally narrow eyes or deep brow arches). Tempo normalizes every feature $x_k(t)$ exclusively against the user's own 60 s calm baseline:
 
-```
-+---------------------------------------------------------------------------------------+
-|  1. BASELINE (80s)       -->   2. STRESSOR (90s)        -->   3. RECOVERY (90s)       |
-|  Calibrate Resting Face        7-Color Stroop Challenge       Guided Breathwork       |
-|  Tension ~ 0.0 (Sattva)        Tension Spikes (Rajas)         Tension Drops (Sattva)  |
-+---------------------------------------------------------------------------------------+
-```
+$$s_k = \max\big(1.4826 \cdot \text{MAD}_k,\; 0.1|m_k|,\; \text{FLOOR}_k\big), \qquad z_k(t) = \operatorname{clip}\!\left(\frac{x_k(t) - m_k}{s_k},\; -3,\; +3\right)$$
 
-1. **Camera Setup & Baseline (80s)**:
-   - Click **Allow Camera**. Notice the on-device privacy guarantee: the raw video never leaves browser memory.
-   - Sit comfortably facing the screen. The automated setup runs 20 seconds of settling in, followed by 60 seconds of baseline calibration.
-   - The system computes your personal resting mean ($\mu$) and standard deviation ($\sigma$) across all facial muscle groups.
-2. **Stressor Phase (Cognitive Strain)**:
-   - Flip the phase switch to **Stressor**.
-   - Click the **"Launch Stroop Test"** button to open the built-in 7-color cognitive conflict stressor (e.g. the word *"BLUE"* rendered in red ink with rotating response buttons).
-   - Complete 30–60 seconds of trials. Observe the real-time SVG trend chart: your **Tension Index** climbs into the elevated zone as your brow furrows (AU4), eyelids tighten (AU7), and blinking is suppressed.
-3. **Recovery Phase (Parasympathetic Reset)**:
-   - Flip the phase switch to **Recovery**.
-   - Click **"Guided Breathing"** and select a protocol (such as *4-7-8 Relaxing Breath* or *5-5 Coherent Breathing*).
-   - Follow the visual expanding/contracting orb and soft audio cues for 3–4 cycles. Observe the live tension score drop back toward baseline.
-4. **Summary & Export**:
-   - Click **"View Summary"** to inspect automated phase-by-phase metrics, cognitive Stroop interference latency ($RT_{incongruent} - RT_{congruent}$), and directional validation checks.
-   - Click **"Export CSV"** to inspect the exported biometric telemetry (strictly derived numbers, zero imagery).
+When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or phone), `attenuateDownLook()` attenuates foreshortening-induced false brow/eyelid spikes.
+
+### Experimental 3-ROI Motion-Protected rPPG (`hr.js`)
+* **3-ROI Quality-Weighted POS Consensus (`fuseRois`):** Tracks forehead, left cheek, and right cheek independently under $YC_bC_r$ skin masking; tolerates single-cheek occlusion ($\ge 2/3$ slots with $\ge 80\%$ coverage).
+* **Block & Tail Motion Rejection (`motionBlocks`):** Flags 1 s blocks (and partial trailing segments) where despiked green spread exceeds `3x` clean reference or raw forehead landmark excursion exceeds `0.08` face widths; freezes tracker state instead of locking onto head-nod harmonics.
+* **Anti-Hopping Gaussian Affinity & Ectopy Filtering:** Scores spectral peaks with Gaussian distance weighting around the locked HR and rejects ectopic inter-beat intervals via $3\sigma_{\text{MAD}}$ gating before computing HRV (`RMSSD`).
+
+### Dual-Baseline LOPO Evaluation & Dropout Fusion (`train_guna.py`, `app.js`)
+* **Strict Leave-One-Participant-Out (LOPO):** Windows are never split across train/test folds; every participant and self-report receives equal total weight.
+* **Mandatory Dual Baselines:** Reports MAE and soft cross-entropy against both a **Constant Baseline** (`vs_mean`) and a **Phase-Mean Baseline** (`vs_phase`) with participant-resampled bootstrap confidence intervals.
+* **Quality-Gated Log-Linear Opinion Pool (`fuse`):** Dynamically renormalizes weights over valid modalities ($q_m \ge 0.3$) and cleanly abstains (`null`) if all channels degrade.
 
 ---
 
-## 🧠 Theoretical Framework: Biomechanics & Triguna
+## 📊 Quantitative Benchmarks (Synthetic `v0.8.5`)
 
-This project bridges modern biomechanical signal processing with the Indic psychology of **Triguna** (Samkhya philosophy and Ayurveda) for course **IKO 103** at IIT Roorkee:
+<details>
+<summary><strong>1. rPPG Signal &amp; Motion Regression Benchmarks (17 Scenarios · <code>tests/hr.test.mjs</code>)</strong></summary>
 
-| Guna State | Psychological Correlate | Biomechanical & Facial Markers | System Response |
-| :--- | :--- | :--- | :--- |
-| **Sattva** | Equilibrium, calmness, cognitive clarity, parasympathetic tone | Relaxed facial musculature, stable resting gaze, normal spontaneous blink rate (~12–18/min), low tension index ($Z \approx 0$). | Green zone, gentle guidance, stable trend |
-| **Rajas** | Agitation, mental restlessness, acute stress, sympathetic activation | Corrugator brow furrowing (AU4), orbicularis oculi lid tightening (AU7), **blink rate suppression** (staring under cognitive load), elevated head/torso motion. | Amber/Red zone, stress alerts, high tension score |
-| **Tamas** | Sluggishness, lethargy, fatigue, withdrawal | Prolonged eye closure duration (PERCLOS), reduced spontaneous facial expressivity, head drooping, postural slump. | Gray zone, lethargy detection, recovery prompts |
+| Scenario | `v0.8.5` Valid % | `v0.8.5` MAE (bpm) | Baseline POS (`v0.4`) MAE / Behavior |
+| :--- | :---: | :---: | :--- |
+| `clean60` (60 bpm clean pulse) | `100%` | `0.2` | `0.2` |
+| `fast120` (no half-rate lock) | `100%` | `0.1` | `0.1` |
+| `harmonicDominant` (holds fundamental) | `100%` | `0.0` | `60.1` (`v0.4` doubles fundamental) |
+| `motionBurst` (4 s motion transient) | `86%` | `0.2` | `9.5` |
+| `motionHijack` (10 s 51 bpm head-motion) | `76%` | `0.28` | `3.82` (never hijacked) |
+| `subROI` fused vs. pooled (51 bpm forehead artefact) | `100%` | `0.21` | Pooled fails at `16.96` MAE |
+| `noiseOnly` (white noise rejection) | `0%` | `NaN` | `52.9` (`0%` false positives) |
 
-### The "Personal Baseline" Innovation (Z-Scores)
-Static computer vision models fail on diverse human populations because neutral facial anatomy varies widely (e.g. naturally narrow eyes or deep brow arches). Tempo avoids this false-positive trap:
-$$\text{Z-Score} = \frac{x - \mu_{\text{baseline}}}{\sigma_{\text{baseline}}}$$
-Every muscle activation is scored exclusively as a deviation from the user's *own resting state*.
+</details>
 
-### Downward-Pitch & Gaze Attenuation (`downLookOf`)
-When users tilt their head downward to read a notebook or look at a keyboard, facial foreshortening can artificially compress the eye and brow geometry. Tempo implements geometric pitch and gaze tracking that automatically attenuates false-positive stress spikes during downward tilt.
+<details>
+<summary><strong>2. LOPO Stress Regression, Modality Dropout &amp; Feature Audits (20 Synthetic Participants)</strong></summary>
+
+| Check / Model | Result (`v0.8.5`) | Baseline / Acceptance Gate |
+| :--- | :--- | :--- |
+| **`stress_delta` (LOPO Ridge, 15 features)** | `MAE = 0.072`, Spearman $\rho = 0.819$ | Beats Constant (`vs_mean = -0.082`) & Phase-Mean (`vs_phase = -0.021`) |
+| **Portal `stress_tension` Gate** | `N = 20`, `vs_phase = -0.016` | Swaps priors for fitted weights only when `N >= 20` & `vs_phase < 0` |
+| **Intermittent Channel Dropout** | `49/49` tests pass | Renormalizes `face+rppg+pose` → `face+pose` → `face` → `null` abstention |
+| **Directional Stressor Concordance** | `10/11` concordant (`sign_p < 0.001`) | Session $\times$ phase Spearman $\rho = 0.783\text{–}0.906$; flags inverse synthetic `blink` |
+| **7-AU Posed Selectivity (`--posed --au`)** | Leak ratios `0.003–0.200` | Passes $\le 0.50$ cross-talk gate across all 7 FACS AUs (`browLower`..`smile`) |
+
+</details>
 
 ---
 
 ## 🔒 Privacy Invariant
 
-* **Zero Video Streaming**: Video and audio streams are processed frame-by-frame in volatile RAM via WebAssembly.
-* **No Image Storage**: No frames, video clips, or photos are ever written to disk, sent to a server, or shared.
-* **Anonymous Data Export**: Only derived numerical indices (timestamps, Z-scores, and phase tags) are exported when the participant explicitly presses **Export CSV**.
+* **Zero Video Streaming:** Video and audio frames are processed strictly in volatile browser RAM via WebAssembly.
+* **No Image Storage:** No frames, video clips, or snapshots are ever written to disk, logged, or uploaded.
+* **Opt-In Numerical Export:** Only derived feature z-scores, phase tags, and optional self-reports are exported locally as CSV when explicitly requested.
 
 ---
 
-## 🧪 Testing & Verification
+## 📂 Project Structure
 
-The project includes an automated test suite verifying DOM bindings, mathematical normalization routines, rPPG physiological filter bounds, Stroop challenge mechanics, and breathing cycles:
-
-```bash
-# Run all 35 unit and regression tests
-npm test
-
-# Perform strict syntax checks across all modules
-npm run check
-```
-
-### Test Coverage Highlights
-* **Facial Action Units & Stress Vectors**: Validates AU4 brow lowering, AU7 eyelid tightening, and pitch attenuation.
-* **Photoplethysmography (hr.js)**: Verifies bandpass filtering, harmonic tracking, skin-pixel segmentation, and motion-burst rejection on synthetic pulse waveforms.
-* **Cognitive Stroop Lifecycle**: Verifies trial generation, chromatic dissonance, keyboard/mouse event dispatch, and interference calculation.
-* **Guided Breathing Engine**: Verifies timing calculations, cycle transitions, and step progress across 4-7-8, 4-4-4-4 Box, and 5-5 Coherent protocols.
-
----
-
-## 📂 Project Architecture
-
-```
+```text
 tempo/
-├── index.html            # Semantic, compact responsive UI with Apple-style design tokens
-├── styles.css            # Scoped modern styles, modal containment, dark/light themes
-├── app.js                # Core controller: MediaPipe worker clock, tension fusion, lifecycle
-├── ui.js                 # Safe DOM bindings, charts, toasts, dialogs, drawers
-├── chart.js              # Real-time smooth zone-colored SVG trend visualizer
-├── stroop.js             # 7-color cognitive interference stressor module
-├── breathe.js            # Guided breathing coach with 3 evidence-based recovery protocols
-├── affect.js             # Circumplex valence-arousal facial affect module
-├── voice.js              # Real-time WebAudio pitch variability & speech energy scorer
-├── hr.js                 # Remote photoplethysmography (rPPG) optical pulse tracker
-├── summary.js            # Retrospective session statistics and directional validation checks
-├── train_guna.py         # Supervised ridge/logistic model training on self-reports
+├── index.html, styles.css          # Semantic responsive UI with Apple-style design tokens
+├── app.js, ui.js                   # MediaPipe Wasm pipeline, Median/MAD calibration, opinion pool
+├── hr.js                           # Experimental 3-ROI POS rPPG, motion guard & MAD-ectopy RMSSD
+├── chart.js, summary.js            # 4 Hz zone-colored SVG trend visualizer & session summary modal
+├── stroop.js, breathe.js           # Built-in 7-color Stroop stressor & guided breathing coach
+├── affect.js, voice.js             # Circumplex facial affect & opt-in on-device WebAudio voice hook
+├── train_guna.py                   # LOPO Ridge/Softmax training, dual baselines & models.json export
+├── tools/
+│   ├── audit_features.py           # Directional stressor concordance & 7-AU posed selectivity audit
+│   ├── audit_posed_expressions.py  # Standalone posed FACS Action Unit audit wrapper
+│   ├── evaluate_rppg.py            # Offline rPPG trace evaluation utility
+│   └── make_synthetic.py           # Synthetic 20-participant cohort generator for CI & smoke checks
 ├── tests/
-│   ├── ui.test.mjs       # UI contract, breathing, Stroop, and tension tests
-│   └── hr.test.mjs       # Synthetic pulse wave physiological verification
-├── launcher/             # Go-based standalone cross-platform offline executable builder
-└── docs/
-    ├── STUDY_PROTOCOL.md                               # 3-phase experimental data collection protocol
-    ├── DATA_SCHEMA.md                                  # Schema for exported CSV columns
-    └── ROADMAP.md                                      # Architectural decisions & changelog
+│   ├── ui.test.mjs                 # 24 DOM contract, trend, Stroop, breathing & dropout fusion tests
+│   └── hr.test.mjs                 # 25 rPPG waveform, sub-ROI occlusion & motion-rejection tests
+├── launcher/                       # Go cross-platform standalone offline executable builder
+└── docs/                           # Architecture spec, patent prior-art benchmark, protocol & assets
 ```
 
 ---
 
-## 📖 Project Documentation & Research Protocol
+## 📖 Documentation & Governance
 
-* **[Study Protocol](STUDY_PROTOCOL.md)**: Standardized 3-phase experimental procedure for multi-subject data collection.
-* **[Data Schema](DATA_SCHEMA.md)**: Full definition of all 28 exported biometric telemetry columns.
-* **[Roadmap & Design Decisions](ROADMAP.md)**: Architectural evolution, prior literature, and source citations.
-
----
-
-## ⚖️ Academic Context & Scientific Honesty
-
-This software was developed for **IKO 103 (Holistic Wellbeing, Indic Perspective)** at **IIT Roorkee**.
-
-In accordance with good research practice, we note our system's verified status and limitations:
-1. **Facial Muscle Tracking**: Action unit extraction, personal baseline Z-score normalization, downward pitch attenuation, and cognitive Stroop interference are thoroughly tested and robust.
-2. **Tension Index Weights**: The weights assigned to facial action units are literature-informed priors; they represent an experimental heuristic index and are not claimed to be clinically certified diagnostic thresholds.
-3. **Optical Pulse (rPPG)**: Remote heart rate tracking passes synthetic physiological unit tests, but on real-world webcams it remains sensitive to fluctuating ambient lighting and rapid head movement.
-4. **Baseline Comparisons**: When evaluating predictive models on study data (`train_guna.py`), results should be compared against both a constant baseline and a phase-mean baseline.
-
----
-
-*Developed at IIT Roorkee for IKO 103: Holistic Wellbeing (Indic Perspective).*
+* [`STUDY_PROTOCOL.md`](STUDY_PROTOCOL.md) — 3-phase data collection protocol (`baseline` → `stressor` → `recovery`).
+* [`DATA_SCHEMA.md`](DATA_SCHEMA.md) — Definitions for all exported telemetry columns (`tension_source`, quality gates, labels).
+* [`ROADMAP.md`](ROADMAP.md) — Multi-phase validation plan (StressID / UBFC-Phys LOPO benchmarks, India DPDP & EU AI Act boundaries).
+* [`docs/PATENT_PRIOR_ART_BENCHMARK_REPORT.md`](docs/PATENT_PRIOR_ART_BENCHMARK_REPORT.md) — Technical comparison against 8 prior-art patents (1999–2024) and 4 peer-reviewed benchmarks.

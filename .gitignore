@@ -20,8 +20,13 @@ docs/*Viva*
 docs/*Cheat*
 docs/*viva*
 docs/*cheat*
+docs/prior_art_and_patents/
+docs/*.pdf
+docs/CLAUDE_PDF_PROMPT.md
+docs/MACOS_APPLE_HEALTH_UI_GUIDE.md
 
 # secrets and OS noise
 .env
 *.pem
 .DS_Store
+docs/*.html
