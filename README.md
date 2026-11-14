@@ -12,7 +12,7 @@
 
 *Zero-cloud webcam & pose perception in WebAssembly + robust within-subject calibration + Leave-One-Participant-Out ML evaluation.*
 
-[Quick Start](#-quick-start) · [Architecture](#-system-architecture) · [Math & Calibration](#-mathematical-pipeline) · [Benchmarks](#-quantitative-benchmarks-synthetic-v085) · [Project Structure](#-project-structure)
+[Quick Start](#quick-start) · [Architecture](#system-architecture) · [Math & Calibration](#mathematical-pipeline) · [Benchmarks](#quantitative-benchmarks-synthetic-v085) · [Project Structure](#project-structure)
 
 </div>
 
@@ -22,7 +22,7 @@
 
 ---
 
-## 🧭 System Architecture
+## System Architecture
 
 Tempo processes all camera frames locally in volatile browser RAM via **MediaPipe WebAssembly** (`FaceLandmarker` + `PoseLandmarker`), extracts 15 biomechanically grounded features relative to each person's own 60 s resting baseline, and exports **only derived numerical telemetry** when the user explicitly clicks **Export CSV** for offline **Leave-One-Participant-Out (LOPO)** evaluation in Python.
 
@@ -44,7 +44,7 @@ flowchart LR
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 Tempo requires **no backend, no database, and no API keys**. Because browsers restrict camera access and ES modules over `file:///`, launch via a local HTTP server from the project root:
 
@@ -85,7 +85,7 @@ python3 train_guna.py
 
 ---
 
-## 🔬 Mathematical Pipeline
+## Mathematical Pipeline
 
 ### Within-Subject Robust Baseline Calibration (`app.js`)
 Static population thresholds misclassify neutral facial anatomy (e.g., naturally narrow eyes or deep brow arches). Tempo normalizes every feature $x_k(t)$ exclusively against the user's own 60 s calm baseline:
@@ -106,7 +106,7 @@ When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or p
 
 ---
 
-## 📊 Quantitative Benchmarks (Synthetic `v0.8.5`)
+## Quantitative Benchmarks (Synthetic `v0.8.5`)
 
 <details>
 <summary><strong>1. rPPG Signal &amp; Motion Regression Benchmarks (17 Scenarios · <code>tests/hr.test.mjs</code>)</strong></summary>
@@ -138,7 +138,7 @@ When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or p
 
 ---
 
-## 🔒 Privacy Invariant
+## Privacy Invariant
 
 * **Zero Video Streaming:** Video and audio frames are processed strictly in volatile browser RAM via WebAssembly.
 * **No Image Storage:** No frames, video clips, or snapshots are ever written to disk, logged, or uploaded.
@@ -146,7 +146,7 @@ When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or p
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```text
 tempo/
@@ -171,7 +171,7 @@ tempo/
 
 ---
 
-## 📖 Documentation & Governance
+## Documentation & Governance
 
 * [`STUDY_PROTOCOL.md`](STUDY_PROTOCOL.md) — 3-phase data collection protocol (`baseline` → `stressor` → `recovery`).
 * [`DATA_SCHEMA.md`](DATA_SCHEMA.md) — Definitions for all exported telemetry columns (`tension_source`, quality gates, labels).
