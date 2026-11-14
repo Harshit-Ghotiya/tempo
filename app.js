@@ -2,7 +2,7 @@
 // Privacy invariant: video and audio never leave the browser and are never recorded, stored, or uploaded.
 // Only derived numerical features are displayed or exported when the user clicks Export.
 
-import { createTracker, isSkin } from './hr.js?v=0.8.0';
+import { createTracker, isSkin, createRoiStabilizer } from './hr.js?v=0.8.0';
 import { initAffect, evalAffect } from './affect.js?v=0.8.0';
 import { createVoiceMonitor } from './voice.js?v=0.8.0';
 import { createTrend, ema } from './chart.js?v=0.8.0';
@@ -109,6 +109,24 @@ const TENSION = {
   headMove: 0.1
 };
 
+// Fitted stress_delta weights from models.json (train_guna.py "stress_tension"): face-only ridge on baseline z-scores,
+// used only when validated leave-one-participant-out on >= FIT_MIN_N participants AND better than the phase-mean baseline.
+export const FIT_MIN_N = 20;
+let fitted = null;
+export function fittedTensionFrom(m) {
+  const st = m?.stress_tension;
+  if (!st || !Array.isArray(st.features) || !Array.isArray(st.coef_z) || st.features.length !== st.coef_z.length) return null;
+  const n = Number(st.n_participants), gain = Number(st.vs_phase ?? st.vs_phase_mean), sdp = Number(st.pred_sd);
+  if (!(n >= FIT_MIN_N) || !(gain < 0) || !(sdp > 0)) return null;
+  const w = {};
+  st.features.forEach((f, i) => {
+    const k = String(f).replace(/^z_/, '');
+    if (k in TENSION && Number.isFinite(Number(st.coef_z[i]))) w[k] = Number(st.coef_z[i]);
+  });
+  return Object.keys(w).length >= 4 ? { w, sd: sdp, n, gain } : null;
+}
+export const tensionSource = () => (fitted ? 'fitted' : 'prior');
+
 // Triguna prior cue weights on baseline z-scores
 const MAP = {
   rajas:  { hr: 0.8, browLower: 0.6, lipTight: 0.4, gaze: 0.6, headMove: 0.5, shrug: 0.6, sway: 0.4, fidget: 0.8, blink: 0.3 },
@@ -196,19 +214,24 @@ export function downLookOf(x, baseRef) {
   return Math.max(0, Math.min(1, raw));
 }
 
+const DOWNLOOK_KEYS = new Set(['lidTight', 'lipTight', 'browLower']);
+function attenuateDownLook(k, val, downLook) {
+  if (downLook > 0 && val > 0 && DOWNLOOK_KEYS.has(k)) {
+    return val * Math.max(0, 1 - 0.65 * Math.min(1, downLook));
+  }
+  return val;
+}
+
 export function tensionOf(z, qFace, downLook = 0) {
-  const zs = Object.keys(TENSION).filter(k => z[k] != null);
-  if ((qFace ?? 0) < MIN_Q || zs.length < 4) return null;
+  if (!z || (qFace ?? 0) < MIN_Q) return null;
+  const Wt = fitted ? fitted.w : TENSION;
+  const zs = Object.keys(Wt).filter(k => Number.isFinite(z[k]));
+  if (zs.length < 4) return null;
+  const sum = zs.reduce((s, k) => s + Wt[k] * attenuateDownLook(k, z[k], downLook), 0);
+  // Fitted: predicted stress change vs own baseline in SDs of the model's predictions (same zone semantics as the prior)
+  if (fitted) return Math.max(-3, Math.min(3, sum / fitted.sd));
   const den = zs.reduce((s, k) => s + Math.abs(TENSION[k]), 0);
   if (!den) return null;
-  const attenFactor = Math.max(0, 1 - 0.65 * Math.min(1, downLook));
-  const sum = zs.reduce((s, k) => {
-    let val = z[k];
-    if (downLook > 0 && val > 0 && (k === 'lidTight' || k === 'lipTight' || k === 'browLower')) {
-      val *= attenFactor;
-    }
-    return s + TENSION[k] * val;
-  }, 0);
   return sum / den;
 }
 
@@ -227,6 +250,7 @@ let use = null;
 let face = null;
 let pose = null;
 let tracker = null;
+const roiStab = createRoiStabilizer();
 let stream = null;
 let vmon = null;
 let running = false;
@@ -376,12 +400,14 @@ export async function loadModel(urls = ['./models.json', './artifacts/models.jso
       const m = await r.json();
       if (m?.models && typeof m.models === 'object' && Object.keys(m.models).length) {
         trained = m;
+        fitted = fittedTensionFrom(m);
         $('guna').hidden = false;
         return m;
       }
     } catch (e) {}
   }
   trained = null;
+  fitted = null;
   $('guna').hidden = !DEMO_GUNA;
   return null;
 }
@@ -705,7 +731,7 @@ export function drawStressMesh(mcx, L, W, H, z = {}, usePulse = false) {
     mcx.strokeStyle = 'rgba(255,69,58,0.75)';
     mcx.lineWidth = 1.5;
     const fw = Math.abs(L[454].x - L[234].x) * W;
-    for (const [c, hx, hy] of [[L[151], 0.14 * fw, 0.05 * fw], [L[50], 0.07 * fw, 0.07 * fw], [L[280], 0.07 * fw, 0.07 * fw]]) {
+    for (const [c, hx, hy] of [[L[151], 0.12 * fw, 0.045 * fw], [L[50], 0.08 * fw, 0.075 * fw], [L[280], 0.08 * fw, 0.075 * fw]]) {
       const rx = c.x * W - hx, ry = c.y * H - hy, rw = 2 * hx, rh = 2 * hy;
       if (typeof mcx.roundRect === 'function') {
         mcx.beginPath();
@@ -802,24 +828,41 @@ function frame(v, t) {
         if (cv.width !== W) { cv.width = W; cv.height = H; }
         cx ??= cv.getContext('2d', { willReadFrequently: true });
         cx.drawImage(v, 0, 0);
-        const fw = Math.abs(L[454].x - L[234].x) * W;
-        const s = [0, 0, 0], fb = [0, 0, 0];
+        const dt = rgb.length ? Math.max(0.01, (t - rgb[rgb.length - 1].t) / 1e3) : 1 / 30;
+        const rawRoi = [
+          L[151].x * W, L[151].y * H,
+          L[50].x * W, L[50].y * H,
+          L[280].x * W, L[280].y * H,
+          Math.abs(L[454].x - L[234].x) * W
+        ];
+        const [fx, fy, lx, ly, rx, ry, fw] = roiStab.update(rawRoi, dt);
+        const s = [0, 0, 0], fb = [0, 0, 0], sub = [];
         let n = 0, nf = 0;
-        for (const [c, hx, hy] of [[L[151], 0.14 * fw, 0.05 * fw], [L[50], 0.07 * fw, 0.07 * fw], [L[280], 0.07 * fw, 0.07 * fw]]) {
-          const x = Math.max(0, Math.round(c.x * W - hx));
-          const y = Math.max(0, Math.round(c.y * H - hy));
+        for (const [cx0, cy0, hx, hy] of [
+          [fx, fy, 0.12 * fw, 0.045 * fw],
+          [lx, ly, 0.08 * fw, 0.075 * fw],
+          [rx, ry, 0.08 * fw, 0.075 * fw]
+        ]) {
+          const x = Math.max(0, Math.round(cx0 - hx));
+          const y = Math.max(0, Math.round(cy0 - hy));
           const w = Math.min(W - x, Math.round(2 * hx));
           const h = Math.min(H - y, Math.round(2 * hy));
-          if (w < 2 || h < 2) continue;
+          if (w < 2 || h < 2) { sub.push(null); continue; }
           const d = cx.getImageData(x, y, w, h).data;
+          const ss = [0, 0, 0];
+          let ns = 0;
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i + 1], b = d[i + 2];
-            if (isSkin(r, g, b)) { s[0] += r; s[1] += g; s[2] += b; n++; }
+            if (isSkin(r, g, b)) { s[0] += r; s[1] += g; s[2] += b; n++; ss[0] += r; ss[1] += g; ss[2] += b; ns++; }
             if (g > 25 && g < 245) { fb[0] += r; fb[1] += g; fb[2] += b; nf++; }
           }
+          // Per-sub-ROI skin means (forehead, left cheek, right cheek) let hr.js down-weight a region corrupted by expression
+          sub.push(ns >= 8 ? [ss[0] / ns, ss[1] / ns, ss[2] / ns] : null);
         }
-        if (n >= 20) rgb.push({ t, r: s[0] / n, g: s[1] / n, b: s[2] / n });
-        else if (nf) rgb.push({ t, r: fb[0] / nf, g: fb[1] / nf, b: fb[2] / nf });
+        // Raw (unstabilised) forehead position in face widths: hr.js treats large 1 s excursions as motion and abstains
+        const mx = rawRoi[0] / (rawRoi[6] || 1), my = rawRoi[1] / (rawRoi[6] || 1);
+        if (n >= 20) rgb.push(sub.filter(Boolean).length >= 2 ? { t, r: s[0] / n, g: s[1] / n, b: s[2] / n, mx, my, sub } : { t, r: s[0] / n, g: s[1] / n, b: s[2] / n, mx, my });
+        else if (nf) rgb.push({ t, r: fb[0] / nf, g: fb[1] / nf, b: fb[2] / nf, mx, my });
       }
 
       if (mcx && $('uMesh')?.checked) {
@@ -829,8 +872,11 @@ function frame(v, t) {
       } else if (mcx && mcv.width) {
         mcx.clearRect(0, 0, mcv.width, mcv.height);
       }
-    } else if (mcx && mcv.width) {
-      mcx.clearRect(0, 0, mcv.width, mcv.height);
+    } else {
+      roiStab.reset();
+      if (mcx && mcv.width) {
+        mcx.clearRect(0, 0, mcv.width, mcv.height);
+      }
     }
     fbuf.push(o);
   }
@@ -866,7 +912,7 @@ function frame(v, t) {
 
   while (fbuf.length && fbuf[0].t < t - 3e4) fbuf.shift();
   while (pbuf.length && pbuf[0].t < t - 3e4) pbuf.shift();
-  while (rgb.length && rgb[0].t < t - 16e3) rgb.shift();
+  while (rgb.length && rgb[0].t < t - 14e3) rgb.shift();
 }
 
 function feats(winS = WIN_S, { pulse = true } = {}) {
@@ -910,7 +956,8 @@ function feats(winS = WIN_S, { pulse = true } = {}) {
   }
 
   if (use.pulse && pulse) {
-    const e = tracker.update(rgb, now);
+    const winRgb = rgb.filter(o => o.t > now - 12e3 && o.t <= now);
+    const e = tracker.update(winRgb.length ? winRgb : rgb, now);
     q.rppg = e.q;
     if (e.valid) {
       x.hr = e.hr;
@@ -981,10 +1028,7 @@ function liveTick() {
 
   for (const [k] of [...ROWS.face, ...ROWS.pose]) {
     if (z[k] != null) {
-      let zk = z[k];
-      if (downLookFast > 0 && zk > 0 && (k === 'lidTight' || k === 'lipTight' || k === 'browLower')) {
-        zk *= Math.max(0, 1 - 0.65 * Math.min(1, downLookFast));
-      }
+      const zk = attenuateDownLook(k, z[k], downLookFast);
       zSmooth[k] = zSmooth[k] == null ? zk : zSmooth[k] + ema(dt, 1.5) * (zk - zSmooth[k]);
       setRow(k, x[k], zSmooth[k]);
     } else {
@@ -1007,7 +1051,7 @@ function show(x, z, q, el, all, ag, tn, af, status) {
     tweenNum($('hrNum'), view.v);
 
     const hrvV = hrvShown(x.hrv, q.rppg);
-    if (hrvV != null) lastHrv = { v: hrvV, t: el };
+    if (hrvV != null) lastHrv = { v: x.hrv, t: el };
     const hrvView = hrView(lastHrv, el);
     tweenNum($('hrvNum'), hrvView.v);
 
@@ -1236,6 +1280,7 @@ function tick() {
     phase_start_s: +phaseStart.toFixed(1),
     transition: !pre && !inside,
     tension_idx: tn ?? '',
+    tension_source: tensionSource(),
     tension_fast: fast == null ? '' : +fast.toFixed(3),
     valence: af ? +af.valence.toFixed(3) : '',
     arousal: af ? +af.arousal.toFixed(3) : '',
@@ -1727,6 +1772,7 @@ $('go').onclick = async () => {
   cal = {};
   log = [];
   tracker = createTracker();
+  roiStab.reset();
   base = null;
   pw = null;
   hiddenAt = -1;
