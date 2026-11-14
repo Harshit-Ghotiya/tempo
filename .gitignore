@@ -15,6 +15,17 @@ launcher/site/
 launcher/tempo-launcher
 __alive
 
+# local development & coding-agent handoff notes
+AGENTS.md
+CLAUDE.md
+HANDOFF.md
+HANDOFF_NOTES.md
+ROADMAP.md
+MANIFEST.sha256
+docs/AGENT_PROMPT.md
+docs/FIRST_ISSUES.md
+docs/EXPLAINER.md
+
 # private student notes & viva guides
 docs/*Viva*
 docs/*Cheat*

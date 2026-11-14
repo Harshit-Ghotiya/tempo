@@ -18,7 +18,7 @@
 
 ---
 
-> **Scientific Honesty (`CLAUDE.md`):** Predicting self-reported change-from-baseline stress (`stress_delta`) is the primary supervised target. Compositional Triguna (*Sattva*, *Rajas*, *Tamas*) is a secondary course-demo layer (`DEMO_GUNA = false` by default). The default portal tension weights (`TENSION` in [`app.js`](app.js)) are unvalidated priors and are dynamically swapped for LOPO-fitted weights **only** when `N >= 20` and `vs_phase < 0`. Quantitative numbers below come from automated synthetic benchmarks (`49/49` JS tests + `20`-participant synthetic LOPO runs); multi-participant real-face cohort studies remain ongoing.
+> **Evaluation Scope:** Predicting self-reported change-from-baseline stress (`stress_delta`) is the primary supervised target. Compositional Triguna (*Sattva*, *Rajas*, *Tamas*) is a secondary course-demo layer (`DEMO_GUNA = false` by default). The default portal tension weights (`TENSION` in [`app.js`](app.js)) are unvalidated priors and are dynamically swapped for LOPO-fitted weights **only** when `N >= 20` and `vs_phase < 0`. Quantitative numbers below come from automated synthetic benchmarks (`49/49` JS tests + `20`-participant synthetic LOPO runs); multi-participant real-face cohort studies remain ongoing.
 
 ---
 
@@ -175,5 +175,4 @@ tempo/
 
 * [`STUDY_PROTOCOL.md`](STUDY_PROTOCOL.md) — 3-phase data collection protocol (`baseline` → `stressor` → `recovery`).
 * [`DATA_SCHEMA.md`](DATA_SCHEMA.md) — Definitions for all exported telemetry columns (`tension_source`, quality gates, labels).
-* [`ROADMAP.md`](ROADMAP.md) — Multi-phase validation plan (StressID / UBFC-Phys LOPO benchmarks, India DPDP & EU AI Act boundaries).
 * [`docs/PATENT_PRIOR_ART_BENCHMARK_REPORT.md`](docs/PATENT_PRIOR_ART_BENCHMARK_REPORT.md) — Technical comparison against 8 prior-art patents (1999–2024) and 4 peer-reviewed benchmarks.
