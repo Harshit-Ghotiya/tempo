@@ -1,107 +1,121 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 340" width="920" height="340" role="img" aria-label="Tempo On-Device Multimodal Stress and Affect Pipeline">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 392" width="1080" height="392" role="img" aria-label="Tempo On-Device Multimodal Stress and Affect Pipeline">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#475569"/>
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#6E778B"/>
     </marker>
     <marker id="arrow-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#2563EB"/>
+      <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="#0A84FF"/>
     </marker>
     <style>
-      .title { font: 700 15px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #0F172A; }
-      .subtitle { font: 500 11.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #475569; }
-      .lane-lbl { font: 700 11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; letter-spacing: 0.6px; }
-      .box-t { font: 700 12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #0F172A; }
-      .box-s { font: 500 10.2px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; fill: #334155; }
-      .mono { font: 600 9.8px "SF Mono", Menlo, Consolas, monospace; fill: #1E293B; }
-      .pill { font: 700 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+      .title { font: 700 17px -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif; fill: #F5F5F7; letter-spacing: -0.2px; }
+      .title-sub { font: 500 14px -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif; fill: #8E95A5; }
+      .subtitle { font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; fill: #8E95A5; }
+      .lane-lbl { font: 700 10.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; letter-spacing: 0.9px; }
+      .box-t { font: 600 12.5px -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif; fill: #F5F5F7; }
+      .box-s { font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; fill: #A1A8B8; }
+      .mono { font: 500 10.5px "SF Mono", Menlo, Consolas, monospace; fill: #C7D0E0; }
+      .pill { font: 600 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; letter-spacing: 0.5px; }
     </style>
   </defs>
 
-  <!-- Card backdrop (readable in GitHub Light and Dark themes) -->
-  <rect x="0" y="0" width="920" height="340" rx="14" fill="#F8FAFC" stroke="#CBD5E1" stroke-width="1.2"/>
+  <!-- Outer Dark Surface -->
+  <rect x="0" y="0" width="1080" height="392" rx="18" fill="#0B0D12" stroke="#222836" stroke-width="1.5"/>
 
   <!-- Header -->
-  <text x="24" y="30" class="title">TEMPO v0.8.5 — On-Device Privacy-Preserving Multimodal Architecture</text>
-  <text x="24" y="47" class="subtitle">Zero-cloud browser perception (WebAssembly) paired with Leave-One-Participant-Out (LOPO) dual-baseline validation</text>
+  <text x="28" y="34" class="title">Tempo v0.8.5  <tspan class="title-sub">·  On-Device Multimodal Architecture</tspan></text>
+  <text x="28" y="54" class="subtitle">Zero-cloud WebAssembly perception calibrated per user, paired with offline LOPO validation</text>
 
-  <!-- Privacy Badge -->
-  <rect x="706" y="16" width="190" height="26" rx="13" fill="#DCFCE7" stroke="#86EFAC"/>
-  <text x="801" y="33" text-anchor="middle" class="pill" fill="#166534">100% ON-DEVICE · ZERO VIDEO UPLOAD</text>
+  <!-- Privacy Pill -->
+  <rect x="780" y="19" width="272" height="28" rx="14" fill="#10281B" stroke="#30D158" stroke-opacity="0.45" stroke-width="1"/>
+  <circle cx="798" cy="33" r="3.5" fill="#30D158"/>
+  <text x="922" y="36.5" text-anchor="middle" class="pill" fill="#6EE798">100% ON-DEVICE · ZERO VIDEO UPLOAD</text>
 
-  <!-- Lane 1: Real-Time Browser Pipeline -->
-  <rect x="20" y="64" width="880" height="122" rx="10" fill="#FFFFFF" stroke="#E2E8F0"/>
-  <text x="34" y="83" class="lane-lbl" fill="#4F46E5">STAGE 1 · REAL-TIME IN-BROWSER PIPELINE (WASM + WEBAUDIO)</text>
+  <!-- Stage 1 Group -->
+  <rect x="24" y="76" width="1032" height="128" rx="14" fill="#121620" stroke="#232A3A" stroke-width="1"/>
+  <text x="40" y="96" class="lane-lbl" fill="#64D2FF">STAGE 1  ·  IN-BROWSER REAL-TIME PIPELINE (WASM + WEBAUDIO)</text>
 
   <!-- Box 1: Capture -->
-  <rect x="34" y="95" width="145" height="76" rx="8" fill="#EEF2FF" stroke="#A5B4FC" stroke-width="1.2"/>
-  <text x="106.5" y="115" text-anchor="middle" class="box-t">Webcam &amp; Clock</text>
-  <text x="106.5" y="131" text-anchor="middle" class="box-s">MediaPipe Wasm v0.10</text>
-  <text x="106.5" y="145" text-anchor="middle" class="box-s">478 3D Landmarks</text>
-  <text x="106.5" y="159" text-anchor="middle" class="box-s">52 Blendshapes + Pose</text>
+  <rect x="40" y="108" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="54" y="108" width="44" height="2.5" rx="1.2" fill="#0A84FF"/>
+  <text x="156" y="128" text-anchor="middle" class="box-t">Webcam &amp; Clock</text>
+  <text x="156" y="146" text-anchor="middle" class="box-s">MediaPipe Wasm v0.10</text>
+  <text x="156" y="161" text-anchor="middle" class="box-s">478 Landmarks &amp; Pose</text>
+  <text x="156" y="176" text-anchor="middle" class="box-s">52 Blendshape Activations</text>
 
-  <line x1="179" y1="133" x2="203" y2="133" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="274" y1="149" x2="292" y2="149" stroke="#6E778B" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Box 2: Feature Engineering & Calibration -->
-  <rect x="205" y="95" width="215" height="76" rx="8" fill="#F0FDFA" stroke="#5EEAD4" stroke-width="1.2"/>
-  <text x="312.5" y="115" text-anchor="middle" class="box-t">Biomechanics &amp; Calibration</text>
-  <text x="312.5" y="131" text-anchor="middle" class="box-s">7 FACS AUs + Blink + Gaze + Pose</text>
-  <text x="312.5" y="145" text-anchor="middle" class="box-s">Down-Pitch Attenuation (downLookOf)</text>
-  <text x="312.5" y="159" text-anchor="middle" class="mono">60s Median/MAD + FLOOR_k</text>
+  <!-- Box 2: Biomechanics -->
+  <rect x="296" y="108" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="310" y="108" width="44" height="2.5" rx="1.2" fill="#64D2FF"/>
+  <text x="412" y="128" text-anchor="middle" class="box-t">Biomechanics &amp; Calibration</text>
+  <text x="412" y="146" text-anchor="middle" class="box-s">7 FACS AUs · Blink · Gaze</text>
+  <text x="412" y="161" text-anchor="middle" class="box-s">Down-Pitch Attenuation</text>
+  <text x="412" y="176" text-anchor="middle" class="mono">60s Median/MAD + FLOOR_k</text>
 
-  <line x1="420" y1="133" x2="444" y2="133" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="530" y1="149" x2="548" y2="149" stroke="#6E778B" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Box 3: 3-ROI rPPG -->
-  <rect x="446" y="95" width="215" height="76" rx="8" fill="#FFFBEB" stroke="#FCD34D" stroke-width="1.2"/>
-  <text x="553.5" y="115" text-anchor="middle" class="box-t">Experimental 3-ROI rPPG</text>
-  <text x="553.5" y="131" text-anchor="middle" class="box-s">YCbCr Skin + POS (Wang 2017)</text>
-  <text x="553.5" y="145" text-anchor="middle" class="box-s">1s Block/Tail Motion Rejection</text>
-  <text x="553.5" y="159" text-anchor="middle" class="box-s">Gaussian Tracker + MAD RMSSD</text>
+  <!-- Box 3: rPPG -->
+  <rect x="552" y="108" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="566" y="108" width="44" height="2.5" rx="1.2" fill="#FF9F0A"/>
+  <text x="668" y="128" text-anchor="middle" class="box-t">3-ROI rPPG (Experimental)</text>
+  <text x="668" y="146" text-anchor="middle" class="box-s">YCbCr + POS (Wang 2017)</text>
+  <text x="668" y="161" text-anchor="middle" class="box-s">1s Block Motion Guard</text>
+  <text x="668" y="176" text-anchor="middle" class="box-s">Gaussian Lock + RMSSD</text>
 
-  <line x1="661" y1="133" x2="685" y2="133" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="786" y1="149" x2="804" y2="149" stroke="#6E778B" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Box 4: On-Device Fusion & UI -->
-  <rect x="687" y="95" width="198" height="76" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.2"/>
-  <text x="786" y="115" text-anchor="middle" class="box-t">Live Tension &amp; Opinion Pool</text>
-  <text x="786" y="131" text-anchor="middle" class="box-s">4 Hz Live Trend + Stroop / Breathe</text>
-  <text x="786" y="145" text-anchor="middle" class="box-s">SNR-Gated Log-Linear Fusion</text>
-  <text x="786" y="159" text-anchor="middle" class="mono">Opt-in CSV Export (Numbers Only)</text>
+  <!-- Box 4: Live Fusion -->
+  <rect x="808" y="108" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="822" y="108" width="44" height="2.5" rx="1.2" fill="#BF5AF2"/>
+  <text x="924" y="128" text-anchor="middle" class="box-t">Fusion &amp; Session UI</text>
+  <text x="924" y="146" text-anchor="middle" class="box-s">4 Hz Trend · Stroop · Breathe</text>
+  <text x="924" y="161" text-anchor="middle" class="box-s">SNR Opinion Pool Fusion</text>
+  <text x="924" y="176" text-anchor="middle" class="mono">Opt-in CSV (Numbers Only)</text>
 
-  <!-- Connector from Lane 1 Export down to Lane 2 -->
-  <path d="M 786 171 L 786 202 L 106 202 L 106 226" fill="none" stroke="#2563EB" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-blue)"/>
-  <rect x="330" y="191" width="250" height="18" rx="9" fill="#DBEAFE" stroke="#93C5FD"/>
-  <text x="455" y="203" text-anchor="middle" class="pill" fill="#1E40AF">DERIVED FEATURES CSV · NO VIDEO EVER EXPORTED</text>
+  <!-- Bridge Connector -->
+  <path d="M 924 190 L 924 222 L 156 222 L 156 238" fill="none" stroke="#0A84FF" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-blue)"/>
+  <rect x="380" y="210" width="320" height="22" rx="11" fill="#0F1F38" stroke="#0A84FF" stroke-opacity="0.55" stroke-width="1"/>
+  <text x="540" y="224.5" text-anchor="middle" class="pill" fill="#70B8FF">DERIVED METRICS CSV · NO VIDEO EXPORTED</text>
 
-  <!-- Lane 2: Offline ML & Validation -->
-  <rect x="20" y="216" width="880" height="106" rx="10" fill="#FFFFFF" stroke="#E2E8F0"/>
-  <text x="34" y="235" class="lane-lbl" fill="#2563EB">STAGE 2 · OFFLINE TRAINING, VALIDATION &amp; QUALITY AUDITS (PYTHON)</text>
+  <!-- Stage 2 Group -->
+  <rect x="24" y="242" width="1032" height="128" rx="14" fill="#121620" stroke="#232A3A" stroke-width="1"/>
+  <text x="40" y="262" class="lane-lbl" fill="#0A84FF">STAGE 2  ·  OFFLINE EVALUATION &amp; MODEL PIPELINE (PYTHON)</text>
 
   <!-- Box 5: Audits -->
-  <rect x="34" y="246" width="200" height="64" rx="8" fill="#F8FAFC" stroke="#94A3B8" stroke-width="1.2"/>
-  <text x="134" y="264" text-anchor="middle" class="box-t">Feature &amp; AU Audits</text>
-  <text x="134" y="279" text-anchor="middle" class="box-s">Directional Stress Concordance</text>
-  <text x="134" y="293" text-anchor="middle" class="box-s">7-AU Posed Selectivity &amp; Leak</text>
+  <rect x="40" y="274" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="54" y="274" width="44" height="2.5" rx="1.2" fill="#8E95A5"/>
+  <text x="156" y="294" text-anchor="middle" class="box-t">Feature &amp; AU Audits</text>
+  <text x="156" y="312" text-anchor="middle" class="box-s">Directional Stress Check</text>
+  <text x="156" y="327" text-anchor="middle" class="box-s">7-AU Posed Selectivity</text>
+  <text x="156" y="342" text-anchor="middle" class="box-s">Cross-Talk Leak Gates</text>
 
-  <line x1="234" y1="278" x2="262" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="274" y1="315" x2="292" y2="315" stroke="#6E778B" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Box 6: LOPO Models -->
-  <rect x="264" y="246" width="218" height="64" rx="8" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.2"/>
-  <text x="373" y="264" text-anchor="middle" class="box-t">LOPO Cross-Validation</text>
-  <text x="373" y="279" text-anchor="middle" class="box-s">Primary: Ridge (stress_delta)</text>
-  <text x="373" y="293" text-anchor="middle" class="box-s">Secondary: Softmax Triguna Pool</text>
+  <!-- Box 6: LOPO -->
+  <rect x="296" y="274" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="310" y="274" width="44" height="2.5" rx="1.2" fill="#0A84FF"/>
+  <text x="412" y="294" text-anchor="middle" class="box-t">LOPO Cross-Validation</text>
+  <text x="412" y="312" text-anchor="middle" class="box-s">Subject-Held-Out Folds</text>
+  <text x="412" y="327" text-anchor="middle" class="box-s">Ridge (stress_delta)</text>
+  <text x="412" y="342" text-anchor="middle" class="box-s">Softmax Triguna Pool</text>
 
-  <line x1="482" y1="278" x2="510" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="530" y1="315" x2="548" y2="315" stroke="#6E778B" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Box 7: Dual Baselines -->
-  <rect x="512" y="246" width="186" height="64" rx="8" fill="#FEF2F2" stroke="#FCA5A5" stroke-width="1.2"/>
-  <text x="605" y="264" text-anchor="middle" class="box-t">Dual-Baseline Gate</text>
-  <text x="605" y="279" text-anchor="middle" class="box-s">Constant + Phase-Mean (vs_phase)</text>
-  <text x="605" y="293" text-anchor="middle" class="box-s">Bootstrap CIs + Permutations</text>
+  <!-- Box 7: Baselines -->
+  <rect x="552" y="274" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="566" y="274" width="44" height="2.5" rx="1.2" fill="#FF453A"/>
+  <text x="668" y="294" text-anchor="middle" class="box-t">Dual-Baseline Gate</text>
+  <text x="668" y="312" text-anchor="middle" class="box-s">vs Constant (vs_mean)</text>
+  <text x="668" y="327" text-anchor="middle" class="box-s">vs Phase Mean (vs_phase)</text>
+  <text x="668" y="342" text-anchor="middle" class="box-s">Bootstrap CIs + Perm Test</text>
 
-  <line x1="698" y1="278" x2="726" y2="278" stroke="#475569" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="786" y1="315" x2="804" y2="315" stroke="#6E778B" stroke-width="1.5" marker-end="url(#arrow)"/>
 
-  <!-- Box 8: Model Export -->
-  <rect x="728" y="246" width="157" height="64" rx="8" fill="#ECFDF5" stroke="#6EE7B7" stroke-width="1.2"/>
-  <text x="806.5" y="264" text-anchor="middle" class="box-t">Portal Weight Gate</text>
-  <text x="806.5" y="279" text-anchor="middle" class="mono">N &gt;= 20 &amp; vs_phase &lt; 0</text>
-  <text x="806.5" y="293" text-anchor="middle" class="box-s">Else keep prior weights</text>
+  <!-- Box 8: Weight Gate -->
+  <rect x="808" y="274" width="232" height="82" rx="12" fill="#171C28" stroke="#283144" stroke-width="1"/>
+  <rect x="822" y="274" width="44" height="2.5" rx="1.2" fill="#30D158"/>
+  <text x="924" y="294" text-anchor="middle" class="box-t">Portal Weight Gate</text>
+  <text x="924" y="312" text-anchor="middle" class="mono">N &gt;= 20 &amp; vs_phase &lt; 0</text>
+  <text x="924" y="327" text-anchor="middle" class="box-s">Swaps Unvalidated Priors</text>
+  <text x="924" y="342" text-anchor="middle" class="box-s">Else Keeps Safe Defaults</text>
 </svg>

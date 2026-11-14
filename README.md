@@ -30,18 +30,6 @@ Tempo processes all camera frames locally in volatile browser RAM via **MediaPip
   <img src="docs/assets/tempo-pipeline.svg" alt="Tempo On-Device Multimodal Architecture" width="100%"/>
 </p>
 
-```mermaid
-flowchart LR
-  A["Webcam + Web Worker Clock"] --> B["MediaPipe Wasm\n478 Landmarks + 52 Blendshapes + Pose"]
-  B --> C["15 Biomechanical Features\n7 FACS AUs · Blink · Gaze · Pose"]
-  B --> D["3-ROI POS rPPG (Experimental)\nForehead + L/R Cheek · Block Motion Guard"]
-  C --> E["60s Median/MAD Calibration\n+ Down-Pitch Attenuation"]
-  D --> F["SNR-Gated Log-Linear Opinion Pool\n+ Gaussian Tracker & MAD RMSSD"]
-  E --> F
-  F --> G["Live 4 Hz Trend · Stroop · Guided Breathing"]
-  F -. "Opt-in Export CSV\n(Numbers Only)" .-> H["Offline Python Suite\nAudits + LOPO Ridge & Softmax"]
-```
-
 ---
 
 ## Quick Start
@@ -90,12 +78,12 @@ python3 train_guna.py
 ### Within-Subject Robust Baseline Calibration (`app.js`)
 Static population thresholds misclassify neutral facial anatomy (e.g., naturally narrow eyes or deep brow arches). Tempo normalizes every feature $x_k(t)$ exclusively against the user's own 60 s calm baseline:
 
-$$s_k = \max\big(1.4826 \cdot \text{MAD}_k,\; 0.1|m_k|,\; \text{FLOOR}_k\big), \qquad z_k(t) = \operatorname{clip}\!\left(\frac{x_k(t) - m_k}{s_k},\; -3,\; +3\right)$$
+$$s_k = \max\big(1.4826 \cdot \text{MAD}_k,\; 0.1|m_k|,\; \text{FLOOR}_k\big), \qquad z_k(t) = \text{clip}\!\left(\frac{x_k(t) - m_k}{s_k},\; -3,\; +3\right)$$
 
 When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or phone), `attenuateDownLook()` attenuates foreshortening-induced false brow/eyelid spikes.
 
 ### Experimental 3-ROI Motion-Protected rPPG (`hr.js`)
-* **3-ROI Quality-Weighted POS Consensus (`fuseRois`):** Tracks forehead, left cheek, and right cheek independently under $YC_bC_r$ skin masking; tolerates single-cheek occlusion ($\ge 2/3$ slots with $\ge 80\%$ coverage).
+* **3-ROI Quality-Weighted POS Consensus (`fuseRois`):** Tracks forehead, left cheek, and right cheek independently under $YC_bC_r$ skin masking; tolerates single-cheek occlusion ($\ge 2/3$ slots with $\ge 80$% coverage).
 * **Block & Tail Motion Rejection (`motionBlocks`):** Flags 1 s blocks (and partial trailing segments) where despiked green spread exceeds `3x` clean reference or raw forehead landmark excursion exceeds `0.08` face widths; freezes tracker state instead of locking onto head-nod harmonics.
 * **Anti-Hopping Gaussian Affinity & Ectopy Filtering:** Scores spectral peaks with Gaussian distance weighting around the locked HR and rejects ectopic inter-beat intervals via $3\sigma_{\text{MAD}}$ gating before computing HRV (`RMSSD`).
 
@@ -131,7 +119,7 @@ When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or p
 | **`stress_delta` (LOPO Ridge, 15 features)** | `MAE = 0.072`, Spearman $\rho = 0.819$ | Beats Constant (`vs_mean = -0.082`) & Phase-Mean (`vs_phase = -0.021`) |
 | **Portal `stress_tension` Gate** | `N = 20`, `vs_phase = -0.016` | Swaps priors for fitted weights only when `N >= 20` & `vs_phase < 0` |
 | **Intermittent Channel Dropout** | `49/49` tests pass | Renormalizes `face+rppg+pose` → `face+pose` → `face` → `null` abstention |
-| **Directional Stressor Concordance** | `10/11` concordant (`sign_p < 0.001`) | Session $\times$ phase Spearman $\rho = 0.783\text{–}0.906$; flags inverse synthetic `blink` |
+| **Directional Stressor Concordance** | `10/11` concordant (`sign_p < 0.001`) | Session $\times$ phase Spearman $\rho = 0.783$–$0.906$; flags inverse synthetic `blink` |
 | **7-AU Posed Selectivity (`--posed --au`)** | Leak ratios `0.003–0.200` | Passes $\le 0.50$ cross-talk gate across all 7 FACS AUs (`browLower`..`smile`) |
 
 </details>

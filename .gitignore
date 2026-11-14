@@ -1,43 +1,23 @@
-# dependencies and caches
+# Dependencies & caches
 node_modules/
 __pycache__/
 *.pyc
 .venv/
 
-# study data: participant data must NEVER be committed
+# Study data (never commit participant CSVs or exports)
 data/
 artifacts/
 *.csv
 
-# build output (recreated by launcher/build.sh)
+# Build output (recreated by launcher/build.sh)
 launcher/dist/
 launcher/site/
 launcher/tempo-launcher
 __alive
 
-# local development & coding-agent handoff notes
-AGENTS.md
-CLAUDE.md
-HANDOFF.md
-HANDOFF_NOTES.md
-ROADMAP.md
-MANIFEST.sha256
-docs/AGENT_PROMPT.md
-docs/FIRST_ISSUES.md
-docs/EXPLAINER.md
-
-# private student notes & viva guides
-docs/*Viva*
-docs/*Cheat*
-docs/*viva*
-docs/*cheat*
-docs/prior_art_and_patents/
-docs/*.pdf
-docs/CLAUDE_PDF_PROMPT.md
-docs/MACOS_APPLE_HEALTH_UI_GUIDE.md
-
-# secrets and OS noise
+# Secrets & OS noise
 .env
 *.pem
 .DS_Store
 docs/*.html
+docs/*.pdf
