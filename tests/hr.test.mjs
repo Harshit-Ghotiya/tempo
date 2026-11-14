@@ -4,27 +4,33 @@
 // and then fixed. This validates the algorithm's logic, not its accuracy on real faces.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTracker, resample, pos, isSkin } from '../hr.js';
+import { createTracker, resample, pos, isSkin, createRoiStabilizer, sqi, rmssd } from '../hr.js';
 
 function rng(seed) { let a = seed; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const gauss = r => Math.sqrt(-2 * Math.log(r() + 1e-12)) * Math.cos(2 * Math.PI * r());
 
 // pulse: amplitude; harm: 2nd-harmonic ratio (number or fn of time); red: channel-dependent low-frequency
 // artefact (breathing/motion/lighting); lf: [Hz, amplitude] slow periodic artefact; burst: [t0, t1, amplitude] broadband motion.
-function trace({ secs = 70, hr = () => 60, pulse = 1, harm = 0.3, noise = 0.002, red = 0, lf = null, burst = null, seed = 1 }) {
+// art: [Hz, amplitude, t0?, t1?] chrominance-coherent periodic artefact (same colour signature as blood volume, so POS cannot cancel it).
+function trace({ secs = 70, hr = () => 60, pulse = 1, harm = 0.3, noise = 0.002, noiseB = null, red = 0, lf = null, burst = null, stepAt = null, fps = 30, seed = 1, art = null }) {
   const r = rng(seed), out = [], gain = [0.0008, 0.0035, 0.0016], base = [180, 120, 100], mot = [0.02, 0.012, 0.008];
   const ph = Array.from({ length: 40 }, () => 2 * Math.PI * r()), fr = Array.from({ length: 40 }, (_, k) => 0.05 + 0.02 * k + 0.02 * r());
   let phi = 0;
-  for (let i = 0; i * 1e3 / 30 < secs * 1e3; i++) {
-    const t = i * 1e3 / 30 + (r() - 0.5) * 4, s = t / 1e3;
-    phi += 2 * Math.PI * (hr(s) / 60) / 30; // hr is in bpm
-    const hv = typeof harm === 'function' ? harm(s) : harm, p = pulse * (Math.cos(phi) + hv * Math.cos(2 * phi + 0.7));
+  for (let i = 0; i * 1e3 / fps < secs * 1e3; i++) {
+    const t = i * 1e3 / fps + (r() - 0.5) * 4, s = t / 1e3;
+    phi += 2 * Math.PI * (hr(s) / 60) / fps; // hr is in bpm
+    const ar = art && s >= (art[2] ?? -Infinity) && s < (art[3] ?? Infinity) ? art[1] * Math.cos(2 * Math.PI * art[0] * s) : 0;
+    const hv = typeof harm === 'function' ? harm(s) : harm, p = pulse * (Math.cos(phi) + hv * Math.cos(2 * phi + 0.7)) + ar;
     let m = 0;
     for (let k = 0; k < 40; k++) m += Math.sin(2 * Math.PI * fr[k] * s + ph[k]) / fr[k];
     m *= red / 40;
     if (lf) m += lf[1] * Math.sin(2 * Math.PI * lf[0] * s); // slow breathing / nodding at lf[0] Hz
     const b = burst && s >= burst[0] && s < burst[1] ? burst[2] : 0;
-    const px = [0, 1, 2].map(c => base[c] * (1 + gain[c] * p + mot[c] * m + noise * gauss(r) + b * gauss(r) * [1, 0.7, 0.5][c]));
+    const step = stepAt && s >= stepAt ? 0.08 : 0;
+    const px = [0, 1, 2].map(c => {
+      const nc = (c === 2 && noiseB !== null) ? noiseB : noise;
+      return base[c] * (1 + step + gain[c] * p + mot[c] * m + nc * gauss(r) + b * gauss(r) * [1, 0.7, 0.5][c]);
+    });
     out.push({ t, r: px[0], g: px[1], b: px[2] });
   }
   return out;
@@ -76,6 +82,9 @@ const SCEN = {
   slowArtefact: { trc: trace({ pulse: 0.4, lf: [0.6, 1.0], seed: 12 }), truth: () => 60 },
   noiseOnly: { trc: trace({ pulse: 0, seed: 9 }), truth: () => 60 },
   redNoiseOnly: { trc: trace({ pulse: 0, red: 0.5, seed: 10 }), truth: () => 60 },
+  warmLightNoisyBlue: { trc: trace({ pulse: 0.5, noiseB: 0.012, red: 0.2, seed: 14 }), truth: () => 60 },
+  autoExposureStep: { trc: trace({ pulse: 0.5, stepAt: 35, seed: 15 }), truth: () => 60 },
+  webcam20fpsRsa: { trc: trace({ pulse: 0.45, fps: 20, hr: s => 68 + 4 * Math.sin(2 * Math.PI * 0.2 * s), red: 0.25, seed: 16 }), truth: s => 68 + 4 * Math.sin(2 * Math.PI * 0.2 * (s - 6)) },
 };
 const R = {};
 for (const [name, sc] of Object.entries(SCEN)) R[name] = stats(run(sc.trc), sc.truth, sc.from || 0);
@@ -125,4 +134,131 @@ test('HRV (RMSSD ms) is estimated on valid pulse windows and increases under res
   assert.ok(eSteady.valid && Number.isFinite(eSteady.hrv), JSON.stringify(eSteady));
   assert.ok(eRsa.valid && Number.isFinite(eRsa.hrv), JSON.stringify(eRsa));
   assert.ok(eRsa.hrv > eSteady.hrv, `expected RSA HRV (${eRsa.hrv}) > steady HRV (${eSteady.hrv})`);
+});
+test('warm indoor lighting with noisy blue channel recovers pulse via adaptive RG chrominance', () => {
+  const v = R.warmLightNoisyBlue;
+  assert.ok(v.valid >= 0.65 && v.mae < 4 && never(v, 15), JSON.stringify(v));
+});
+test('auto-exposure step jump is despiked without losing lock', () => {
+  const v = R.autoExposureStep;
+  assert.ok(v.valid >= 0.95 && v.mae < 2 && never(v, 10), JSON.stringify(v));
+});
+test('20 fps variable webcam framerate with RSA tracks accurately', () => {
+  const v = R.webcam20fpsRsa;
+  assert.ok(v.valid >= 0.60 && v.mae < 4 && never(v, 12), JSON.stringify(v));
+});
+test('Kalman + deadband ROI stabilizer locks against sub-pixel landmark jitter and tracks genuine movement', () => {
+  const stab = createRoiStabilizer();
+  const base = [320, 140, 260, 240, 380, 240, 160];
+  const r = rng(99);
+  const first = stab.update(base, 1 / 30);
+  for (let i = 0; i < 20; i++) {
+    const jittered = base.map(v => v + (r() - 0.5) * 1.2); // +-0.6 px landmark jitter
+    const out = stab.update(jittered, 1 / 30);
+    assert.deepEqual(out.map(Math.round), first.map(Math.round), 'sub-pixel jitter should not shift integer ROI box');
+  }
+  const shifted = base.map(v => v + 18); // genuine head translation > 1.2% of fw
+  let moved = null;
+  for (let i = 0; i < 10; i++) moved = stab.update(shifted, 1 / 30);
+  assert.ok(Math.abs(moved[0] - first[0]) > 10, 'genuine head shift must update ROI coordinates');
+});
+test('autocorrelation SQI distinguishes periodic pulse from white noise', () => {
+  const r = rng(42);
+  const sine = Float64Array.from({ length: 300 }, (_, i) => Math.sin(2 * Math.PI * 1.1 * i / 30));
+  const noise = Float64Array.from({ length: 300 }, () => gauss(r));
+  assert.ok(sqi(sine) > 0.85, `expected high SQI on periodic sine, got ${sqi(sine)}`);
+  assert.ok(sqi(noise) < 0.25, `expected low SQI on white noise, got ${sqi(noise)}`);
+});
+test('gap-aware resampling and leading motion-tail trimming recover pulse after sitting back down', () => {
+  const full = trace({ secs: 15, hr: () => 72, seed: 77 });
+  // Simulate a 2 s missing-face gap at t=1..3s, then 2 s of sitting-down motion at t=3..5s, then 9.5 s clean (t=5..14.5s)
+  const gapped = full.filter(f => f.t < 1000 || (f.t >= 3000 && f.t <= 14500)).map(f => {
+    if (f.t >= 3000 && f.t < 5000) {
+      const m = 18 * Math.sin(2 * Math.PI * 1.9 * f.t / 1e3);
+      return { t: f.t, r: f.r + m, g: f.g + m, b: f.b + m };
+    }
+    return f;
+  });
+  const tracker = createTracker();
+  const res = tracker.update(gapped, 14500);
+  assert.ok(res.valid && Math.abs(res.hr - 72) < 3, `expected lock near 72 bpm after gap + motion tail, got ${JSON.stringify(res)}`);
+});
+test('distance-weighted tracking prevents mode hopping between competing peaks', () => {
+  // Simulate tracking at 78 bpm recovering gradually to 74 bpm with an interfering 64 bpm peak (Mayer / panting residue)
+  const tracker = createTracker();
+  // Initialize tracker at 78 bpm
+  const init = trace({ secs: 12, hr: () => 78, seed: 101 });
+  tracker.update(init, 12e3);
+  // Feed a trace at 76 bpm with a strong competing low-frequency peak at 64 bpm (0.6x pulse)
+  const competing = trace({ secs: 15, hr: () => 76, harm: 0.2, lf: [64 / 60, 0.6], seed: 102 });
+  const res = tracker.update(competing, 15e3);
+  assert.ok(res.valid, 'tracker should remain valid');
+  assert.ok(res.hr >= 72 && res.hr <= 80, `expected tracker to stay locked on 76 bpm pulse instead of hopping to 64 bpm, got ${res.hr}`);
+});
+test('cold start protects against false single-window lock on low-frequency panting (<58 bpm)', () => {
+  const tracker = createTracker();
+  // Single window of strong 52 bpm heave (0.86 Hz)
+  const panting = trace({ secs: 10, hr: () => 52, pulse: 1.2, noise: 0.0005, seed: 103 });
+  const res = tracker.update(panting, 10e3);
+  // A single window of <58 bpm must NOT lock on window 1 without 2-window consistency
+  assert.ok(!res.valid || res.q < 0.35, 'single-window panting burst must not lock tracker at 52 bpm');
+});
+test('mid-session 10 s head-motion artefact at 51 bpm cannot hijack a 68 bpm lock (S09 t=40-54 s regression)', () => {
+  const trc = trace({ hr: () => 68, pulse: 0.6, art: [0.85, 1.6, 40, 50], seed: 31 }).map(f => {
+    const s = f.t / 1e3, moving = s >= 40 && s < 50;
+    return { ...f, mx: 0.5 + (moving ? 0.12 * Math.sin(2 * Math.PI * 0.85 * s) : 0.001 * Math.sin(7 * s)), my: 0.3 };
+  });
+  const res = run(trc), v = stats(res, () => 68);
+  const during = res.filter(e => e.s >= 40 && e.s <= 64 && e.valid);
+  console.log('motionHijack', JSON.stringify(v), 'valid during/after motion:', during.length);
+  assert.ok(v.valid >= 0.65 && v.mae < 3 && never(v, 8), JSON.stringify(v));
+  assert.ok(during.every(e => e.hr > 62), `dragged toward 51 bpm: ${JSON.stringify(during.map(e => [e.s, +e.hr.toFixed(1)]))}`);
+  assert.ok(res.some(e => e.s >= 60 && e.valid), 'must re-attach to the pulse once a clean 8 s stretch exists');
+});
+test('rmssd rejects a premature (ectopic / motion) beat instead of reporting an HRV spike', () => {
+  const bpm = 70, T = 60 / bpm, beats = Array.from({ length: 18 }, (_, k) => k * T);
+  const ect = beats.slice();
+  ect[7] = beats[6] + 0.72 * T; // premature beat; compensatory pause keeps beat 8 on schedule
+  const wave = bt => Float64Array.from({ length: 12 * 30 }, (_, i) => {
+    const t = i / 30;
+    let k = 0;
+    while (k < bt.length - 2 && bt[k + 1] <= t) k++;
+    const ph = 2 * Math.PI * (k + (t - bt[k]) / (bt[k + 1] - bt[k]));
+    return Math.cos(ph) + 0.3 * Math.cos(2 * ph + 0.7);
+  });
+  const clean = rmssd(wave(beats), bpm), ectopic = rmssd(wave(ect), bpm);
+  console.log('rmssd clean', clean, 'ectopic', ectopic);
+  assert.ok(Number.isFinite(clean) && clean <= 30, `clean RMSSD ${clean}`);
+  assert.ok(Number.isFinite(ectopic) && ectopic <= 30, `one ectopic beat inflated RMSSD to ${ectopic} ms`);
+});
+test('sub-ROI consensus fusion rejects a forehead-only 51 bpm artefact that contaminates the pooled mean', () => {
+  const A = trace({ hr: () => 68, pulse: 0.6, seed: 41 }), B = trace({ hr: () => 68, pulse: 0.6, seed: 42 });
+  const C = trace({ hr: () => 68, pulse: 0.6, art: [0.85, 2.5], seed: 43 });
+  const len = Math.min(A.length, B.length, C.length);
+  const trc = Array.from({ length: len }, (_, i) => ({
+    t: A[i].t,
+    r: (A[i].r + B[i].r + C[i].r) / 3, g: (A[i].g + B[i].g + C[i].g) / 3, b: (A[i].b + B[i].b + C[i].b) / 3,
+    sub: [[C[i].r, C[i].g, C[i].b], [A[i].r, A[i].g, A[i].b], [B[i].r, B[i].g, B[i].b]]
+  }));
+  const fused = stats(run(trc), () => 68);
+  const pooled = stats(run(trc.map(({ sub, ...f }) => f)), () => 68); // diagnostic only, not asserted
+  console.log('subROI fused', JSON.stringify(fused), 'pooled', JSON.stringify(pooled));
+  assert.ok(fused.valid >= 0.8 && fused.mae < 4 && never(fused, 10), JSON.stringify(fused));
+});
+
+test('sub-ROI fusion tolerates one persistently occluded cheek and isolated dropped frames', () => {
+  const A = trace({ hr: () => 68, pulse: 0.6, seed: 51 }), B = trace({ hr: () => 68, pulse: 0.6, seed: 52 });
+  const C = trace({ hr: () => 68, pulse: 0.6, art: [0.85, 2.5], seed: 53 });
+  const len = Math.min(A.length, B.length, C.length);
+  const trc = Array.from({ length: len }, (_, i) => ({
+    t: A[i].t,
+    r: (A[i].r + B[i].r + C[i].r) / 3, g: (A[i].g + B[i].g + C[i].g) / 3, b: (A[i].b + B[i].b + C[i].b) / 3,
+    sub: [
+      i % 12 === 0 ? null : [A[i].r, A[i].g, A[i].b],
+      null,
+      i % 17 === 0 ? null : [B[i].r, B[i].g, B[i].b]
+    ]
+  }));
+  const res = stats(run(trc), () => 68);
+  assert.ok(res.valid >= 0.8 && res.mae < 4 && never(res, 10), JSON.stringify(res));
 });

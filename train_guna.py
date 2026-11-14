@@ -410,8 +410,54 @@ def regression_experiments(df, X, w, groups):
 
 # ------------------------------------------------------------------ export
 
-def fit_final(X, Y, w, groups, features, C):
-    """Final models on all participants, plus fusion weights and temperature fitted on LOPO predictions."""
+def fit_stress_tension(df, X, w, groups, features):
+    """Face-only ridge for stress_delta, exported for the portal's tension index (Issues #5/#6).
+    LOPO validation uses the SAME feature set and model as the export, so the portal's gate
+    (n_participants >= 20 and vs_phase < 0) describes exactly these weights. Weights are on the
+    portal's baseline z-scale: coef_z = ridge coefficient / scaler scale."""
+    if df is None or "raw_stress" not in df.columns or BASELINE_COLUMNS[3] not in df.columns:
+        return None
+    idx, cols = modality_cols(features, "face")
+    if not idx or not all(c.startswith("z_") for c in cols):
+        return None  # raw blendshape weights would not apply to the portal's z-scores
+    phase = df["phase"].astype(str).to_numpy()
+    st = df["raw_stress"].astype(float).to_numpy()
+    bs = df[BASELINE_COLUMNS[3]].astype(float).to_numpy()
+    has_face = ~np.isnan(X[:, idx]).all(axis=1)
+    mask = (phase != "baseline") & np.isfinite(st) & np.isfinite(bs) & has_face
+    gm = groups[mask]
+    if len(np.unique(gm)) < 3:
+        return None
+    Xf = X[mask][:, idx]
+    T = ((st - bs) / 10)[mask][:, None]
+    wm = w[mask] / pd.Series(w[mask]).groupby(gm).transform("sum").to_numpy()
+    wm = wm * len(wm) / wm.sum()
+    res = ridge_cv(Xf, T, wm, gm, -1, 1, True, phases=phase[mask])
+    prep = make_prep()
+    A = prep.fit_transform(Xf)
+    model = Ridge(alpha=1.0).fit(A, T, sample_weight=wm)
+    sc, imp = prep.named_steps["standardscaler"], prep.named_steps["simpleimputer"]
+    scale = np.where(sc.scale_ > 0, sc.scale_, 1.0)
+    coef = np.ravel(model.coef_)
+    p = np.ravel(model.predict(A))
+    pm = np.average(p, weights=wm)
+    num = lambda v: float(v) if v is not None and np.isfinite(v) else None
+    return {"target": "stress_delta / 10 (self-reported change from own baseline report)", "model": "ridge", "alpha": 1.0,
+            "features": cols, "coef_z": (coef / scale).tolist(), "intercept": float(np.ravel(model.intercept_)[0]),
+            "mean": sc.mean_.tolist(), "scale": scale.tolist(),
+            "imputer_median": np.nan_to_num(imp.statistics_).tolist(),
+            "pred_sd": float(np.sqrt(np.average((p - pm) ** 2, weights=wm))),
+            "n_participants": int(len(np.unique(gm))), "n_windows": int(mask.sum()),
+            "mae": num(res.get("mae")), "phase_baseline_mae": num(res.get("phase_baseline_mae")),
+            "vs_phase": num(res.get("vs_phase")), "vs_phase_lo": num(res.get("vs_phase_lo")),
+            "vs_phase_hi": num(res.get("vs_phase_hi")), "vs_zero": num(res.get("vs_zero")),
+            "spearman": num(res.get("spearman")),
+            "gate": {"min_participants": 20, "requires": "vs_phase < 0 (recommended: vs_phase_hi < 0)"}}
+
+
+def fit_final(X, Y, w, groups, features, C, df=None):
+    """Final models on all participants, plus fusion weights and temperature fitted on LOPO predictions,
+    plus the face-only stress_delta tension model (None when stress ratings are absent)."""
     models = {}
     for m in MODALITIES:
         mod = fit_modality(X, Y, w, features, m, C)
@@ -422,10 +468,10 @@ def fit_final(X, Y, w, groups, features, C):
                      "mean": sc.mean_.tolist(), "scale": sc.scale_.tolist(), "W": mod["W"].tolist(), "classes": GUNAS}
     oof = modality_oof(X, Y, w, groups, features, C)
     fusion = fit_fusion({m: v[0] for m, v in oof.items()}, {m: v[1] for m, v in oof.items()}, Y, w) if oof else None
-    return {"meta": {"trainer_version": "0.4", "C": C, "n_participants": int(len(np.unique(groups))),
+    return {"meta": {"trainer_version": "0.5", "C": C, "n_participants": int(len(np.unique(groups))),
                      "n_windows": int(len(Y)), "target": "self-reported state (compositional)",
                      "warning": "Experimental. Trained on self-report; not a validated measure."},
-            "models": models, "fusion": fusion}
+            "models": models, "fusion": fusion, "stress_tension": fit_stress_tension(df, X, w, groups, features)}
 
 
 def show(df, title):
@@ -499,7 +545,15 @@ def main():
         reg.to_csv(out / "results_regression.csv", index=False)
     if perm:
         (out / "permutation.json").write_text(json.dumps(perm, indent=2), encoding="utf-8")
-    (out / "models.json").write_text(json.dumps(fit_final(X, Y, w, groups, feats, args.C), indent=2), encoding="utf-8")
+    final = fit_final(X, Y, w, groups, feats, args.C, df=df)
+    st = final.get("stress_tension")
+    if st:
+        use = st["n_participants"] >= 20 and st["vs_phase"] is not None and st["vs_phase"] < 0
+        print(f"\nstress_tension (face-only ridge on stress_delta): N={st['n_participants']}, vs_phase={st['vs_phase']}, "
+              f"CI=[{st['vs_phase_lo']}, {st['vs_phase_hi']}] -> portal uses {'FITTED' if use else 'PRIOR'} tension weights")
+    else:
+        print("\nstress_tension not exported (needs raw_stress, baseline_raw_stress and z_ face columns).")
+    (out / "models.json").write_text(json.dumps(final, indent=2), encoding="utf-8")
     print(f"\nSaved results to {out}/")
 
 

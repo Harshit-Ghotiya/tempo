@@ -655,3 +655,102 @@ test('tensionOf and downLookOf: downward pitch and phone gaze attenuation suppre
   assert.equal($('btnStroop').hidden, true, 'Stroop button hidden in Baseline phase');
   assert.equal($('btnBreathe').hidden, true, 'Breathe button hidden in Baseline phase');
 });
+
+test('fitted stress_delta tension weights: used only when validated (N >= 20, vs_phase < 0), priors otherwise', async () => {
+  const app = await import('../app.js');
+  const base = {
+    meta: { trainer_version: '0.5' },
+    models: { face: { features: ['z_smile'], imputer_median: [0], mean: [0], scale: [1], W: [[0, 0], [0, 0], [0, 0]], classes: ['sattva', 'rajas', 'tamas'] } }
+  };
+  const st = {
+    features: ['z_browLower', 'z_lidTight', 'z_lipTight', 'z_smile', 'z_blink'],
+    coef_z: [0.02, 0.06, 0.0, -0.03, -0.01], pred_sd: 0.05, n_participants: 24,
+    vs_phase: -0.012, vs_phase_lo: -0.02, vs_phase_hi: -0.004
+  };
+  const z = { browLower: 1, lidTight: 1, lipTight: 1, smile: 0.5, blink: -1 };
+  const prior = (0.5 + 1 + 0.8 - 0.4 * 0.5 + 0.4) / (0.5 + 1 + 0.8 + 0.4 + 0.4);
+  const fittedVal = (0.02 + 0.06 + 0 - 0.015 + 0.01) / 0.05;
+  const serve = obj => async u => (u === './models.json' ? { ok: true, json: async () => obj } : { ok: false });
+  const origFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = serve({ ...base, stress_tension: st });
+    assert.ok(await app.loadModel(['./models.json']));
+    assert.equal(app.tensionSource(), 'fitted');
+    assert.ok(Math.abs(app.tensionOf(z, 0.9) - fittedVal) < 1e-9, `fitted ${app.tensionOf(z, 0.9)}`);
+    assert.equal(app.tensionOf(z, 0.2), null, 'still abstains on poor face quality');
+    assert.equal(app.tensionOf(null, 0.9), null, 'null z abstains');
+    assert.equal(app.tensionOf({ lidTight: 1, smile: 1, blink: 0 }, 0.9), null, 'still needs >= 4 features');
+    assert.ok(Math.abs(app.tensionOf({ ...z, blink: NaN }, 0.9) - ((0.02 + 0.06 - 0.015) / 0.05)) < 1e-9, 'NaN feature does not poison fitted sum');
+    assert.equal(app.tensionOf({ browLower: 3, lidTight: 3, lipTight: 3, smile: -3 }, 0.9), 3, 'clipped to +3');
+
+    for (const bad of [{ n_participants: 12 }, { vs_phase: 0.004 }, { vs_phase: NaN }, { vs_phase: null }, { pred_sd: 0 }, { coef_z: [0.1] }]) {
+      globalThis.fetch = serve({ ...base, stress_tension: { ...st, ...bad } });
+      assert.ok(await app.loadModel(['./models.json']));
+      assert.equal(app.tensionSource(), 'prior', JSON.stringify(bad));
+      assert.ok(Math.abs(app.tensionOf(z, 0.9) - prior) < 1e-9, JSON.stringify(bad));
+    }
+    globalThis.fetch = serve({ ...base });
+    await app.loadModel(['./models.json']);
+    assert.equal(app.tensionSource(), 'prior', 'models.json without stress_tension');
+    globalThis.fetch = async () => ({ ok: false });
+    assert.equal(await app.loadModel(['./models.json']), null);
+    assert.equal(app.tensionSource(), 'prior', 'no models.json');
+    assert.ok(Math.abs(app.tensionOf(z, 0.9) - prior) < 1e-9);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('multimodal late fusion survives intermittent channel dropout (US 10,628,741 Claims 9-10 benchmark)', async () => {
+  const app = await import('../app.js');
+  const modCfg = (f, w1) => ({
+    features: [f], imputer_median: [0], mean: [0], scale: [1],
+    W: [[0, -w1], [0, w1], [0, 0]], classes: ['sattva', 'rajas', 'tamas']
+  });
+  const modelDoc = {
+    meta: { trainer_version: '0.5' },
+    models: { face: modCfg('z_browLower', 1.2), rppg: modCfg('z_hr', 1.0), pose: modCfg('z_shrug', 0.8) },
+    fusion: { weights: { face: 0.5, rppg: 0.25, pose: 0.25 }, temperature: 0.9 }
+  };
+  const origFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async u => (u === './models.json' ? { ok: true, json: async () => modelDoc } : { ok: false });
+    assert.ok(await app.loadModel(['./models.json']));
+
+    const pFace = app.modP('face', { browLower: 1.5 });
+    const pRppg = app.modP('rppg', { hr: 1.0 });
+    const pPose = app.modP('pose', { shrug: 0.5 });
+    const pRppgDrop = app.modP('rppg', {}); // all rPPG features missing -> null abstention
+    assert.equal(pRppgDrop, null);
+
+    const logPool = active => {
+      const den = active.reduce((s, [, w]) => s + w, 0);
+      const cls = ['sattva', 'rajas', 'tamas'];
+      const lg = cls.map(c => active.reduce((s, [p, w]) => s + w * Math.log(p[c]), 0) / den / 0.9);
+      const mx = Math.max(...lg), ex = lg.map(v => Math.exp(v - mx)), Z = ex.reduce((a, b) => a + b, 0);
+      return Object.fromEntries(cls.map((c, i) => [c, ex[i] / Z]));
+    };
+
+    // 1. All 3 modalities active
+    const all3 = app.fuse({ face: { p: pFace, q: 0.9 }, rppg: { p: pRppg, q: 0.9 }, pose: { p: pPose, q: 0.9 } });
+    const expAll3 = logPool([[pFace, 0.5], [pRppg, 0.25], [pPose, 0.25]]);
+    assert.ok(Math.abs(all3.sattva + all3.rajas + all3.tamas - 1) < 1e-9);
+    assert.ok(Math.abs(all3.rajas - expAll3.rajas) < 1e-9);
+
+    // 2. rppg drops out intermittently (q < MIN_Q -> omitted); renormalizes face (0.5/0.75) + pose (0.25/0.75)
+    const dropRppg = app.fuse({ face: { p: pFace, q: 0.9 }, pose: { p: pPose, q: 0.9 } });
+    const expDropRppg = logPool([[pFace, 0.5 / 0.75], [pPose, 0.25 / 0.75]]);
+    assert.ok(Math.abs(dropRppg.sattva + dropRppg.rajas + dropRppg.tamas - 1) < 1e-9);
+    assert.ok(Math.abs(dropRppg.rajas - expDropRppg.rajas) < 1e-9);
+
+    // 3. Both rppg and pose drop out; continues with face alone
+    const faceOnly = app.fuse({ face: { p: pFace, q: 0.9 } });
+    const expFaceOnly = logPool([[pFace, 1.0]]);
+    assert.ok(Math.abs(faceOnly.rajas - expFaceOnly.rajas) < 1e-9);
+
+    // 4. All channels drop out -> abstains cleanly
+    assert.equal(app.fuse({}), null);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
