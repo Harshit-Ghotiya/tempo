@@ -1,4 +1,4 @@
 Tempo (Guna project)
-Version: v0.8.0
-Date: 2026-11-01
-Status: Production-grade modular architecture, guided recovery breathing coach (4-7-8, box, coherent), 4-button rotating Stroop stressor with Pink & 7 distinct colors, head-pitch phone gaze attenuation, compact laptop sidebar, session summary modal, PDF print layout, pulse tile with light coach; no real labelled data included
+Version: v0.8.5
+Date: 2026-11-14
+Status: 3-ROI quality-weighted POS rPPG consensus fusion, 1 s block/tail motion protection, anti-hopping Gaussian tracking, MAD-ectopy RMSSD, LOPO-gated stress_tension Ridge loader (N >= 20, vs_phase < 0), 7-AU posed & directional stressor audits, and intermittent channel dropout fusion; no real labelled data included
