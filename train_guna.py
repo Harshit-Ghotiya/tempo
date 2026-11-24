@@ -84,11 +84,13 @@ def load_dataset(path, min_quality):
                     df.loc[bad, c] = np.nan
 
     Y = df[LABEL_COLUMNS].astype(float).to_numpy()
-    s = Y.sum(axis=1)
-    if np.nanmedian(s) > 1.5:  # 0-10 ratings -> simplex
-        Y = Y / np.maximum(s[:, None], EPS)
     if not np.isfinite(Y).all() or (Y < 0).any():
         raise ValueError("Labels must be finite and non-negative.")
+    s = Y.sum(axis=1)
+    if (s <= 0).any():
+        raise ValueError("Compositional label row sums must be strictly positive.")
+    if np.nanmedian(s) > 1.5:  # 0-10 ratings -> simplex
+        Y = Y / s[:, None]
 
     X = df[feats].astype(float).to_numpy()
     groups = df["participant_id"].astype(str).to_numpy()
@@ -170,11 +172,15 @@ def modality_cols(features, modality):
 
 def fit_modality(X, Y, w, features, modality, C):
     idx, cols = modality_cols(features, modality)
-    if not idx or np.isnan(X[:, idx]).all():
+    if not idx:
+        return None
+    sub = X[:, idx]
+    ok = ~np.isnan(sub).all(axis=1)
+    if ok.sum() < 2:
         return None
     prep = make_prep()
-    A = prep.fit_transform(X[:, idx])
-    return {"idx": idx, "cols": cols, "prep": prep, "W": fit_soft_logistic(A, Y, C, w)}
+    A = prep.fit_transform(sub[ok])
+    return {"idx": idx, "cols": cols, "prep": prep, "W": fit_soft_logistic(A, Y[ok], C, w[ok])}
 
 
 def predict_modality(model, X):
@@ -215,7 +221,7 @@ def modality_oof(X, Y, w, groups, features, C):
     return out
 
 
-def fuse_predictions(P, A, weights, T=1.0):
+def fuse_predictions(P, A, weights, T=1.0, fallback=None):
     """Log-linear opinion pool. Weights are renormalised per row over the modalities present."""
     n = len(next(iter(P.values())))
     num, den = np.zeros((n, 3)), np.zeros((n, 1))
@@ -223,11 +229,18 @@ def fuse_predictions(P, A, weights, T=1.0):
         a = A[m][:, None].astype(float)
         num += wt * a * np.log(np.clip(P[m], 1e-8, 1.0))
         den += wt * a
-    logp = np.where(den > 0, num / np.maximum(den, EPS), np.log(1 / 3)) / T
+    if fallback is None:
+        fb = np.full((n, 3), np.log(1 / 3))
+    else:
+        fb_arr = np.asarray(fallback, dtype=float)
+        if fb_arr.ndim == 1:
+            fb_arr = np.broadcast_to(fb_arr, (n, 3))
+        fb = np.log(np.clip(fb_arr, 1e-8, 1.0))
+    logp = np.where(den > 0, num / np.maximum(den, EPS), fb) / np.where(den > 0, T, 1.0)
     return softmax_rows(logp)
 
 
-def fit_fusion(P, A, Y, w):
+def fit_fusion(P, A, Y, w, fallback=None):
     """Modality weights on the simplex plus one temperature (the only calibration parameter)."""
     mods = list(P)
     M = len(mods)
@@ -238,7 +251,7 @@ def fit_fusion(P, A, Y, w):
 
     def objective(th):
         weights, T = unpack(th)
-        return weighted_ce(Y, fuse_predictions(P, A, weights, T), w)
+        return weighted_ce(Y, fuse_predictions(P, A, weights, T, fallback=fallback), w)
 
     res = minimize(objective, np.zeros(M + 1), method="Nelder-Mead",
                    options={"xatol": 1e-3, "fatol": 1e-6, "maxiter": 400})
@@ -251,18 +264,23 @@ def nested_fusion(X, Y, w, groups, features, C):
     P, rows = np.zeros_like(Y), []
     for g in np.unique(groups):
         te = groups == g
+        prior = weighted_mean(Y[~te], w[~te])
         inner = modality_oof(X[~te], Y[~te], w[~te], groups[~te], features, C)
         if not inner:
-            P[te] = 1 / 3
+            P[te] = prior
             continue
-        fusion = fit_fusion({m: v[0] for m, v in inner.items()}, {m: v[1] for m, v in inner.items()}, Y[~te], w[~te])
+        fusion = fit_fusion({m: v[0] for m, v in inner.items()}, {m: v[1] for m, v in inner.items()},
+                            Y[~te], w[~te], fallback=prior)
         preds, avail = {}, {}
         for m in inner:
             mod = fit_modality(X[~te], Y[~te], w[~te], features, m, C)
             if mod is not None:
                 preds[m], avail[m] = predict_modality(mod, X[te])
+        if not preds:
+            P[te] = prior
+            continue
         weights = {m: wt for m, wt in fusion["weights"].items() if m in preds}
-        P[te] = fuse_predictions(preds, avail, weights, fusion["temperature"])
+        P[te] = fuse_predictions(preds, avail, weights, fusion["temperature"], fallback=prior)
         rows.append({"test_participant": g, **{f"w_{m}": v for m, v in fusion["weights"].items()},
                      "temperature": fusion["temperature"]})
     return P, pd.DataFrame(rows)
@@ -307,7 +325,7 @@ def summarise(preds, Y, w, groups):
         rows.append({"method": name, "soft_ce": ce.mean(),
                      "vs_constant": c[0], "vs_constant_lo": c[1], "vs_constant_hi": c[2],
                      "vs_phase_mean": p[0], "vs_phase_mean_lo": p[1], "vs_phase_mean_hi": p[2],
-                     "balanced_acc": balanced_accuracy_score(Y.argmax(1), P.argmax(1)),
+                     "balanced_acc": balanced_accuracy_score(Y.argmax(1), P.argmax(1), sample_weight=w),
                      "n_participants": len(ids), "n_windows": len(Y)})
         per += [{"method": name, "participant": g, "soft_ce": v} for g, v in zip(ids, ce)]
     return pd.DataFrame(rows), pd.DataFrame(per)
@@ -388,23 +406,23 @@ def regression_experiments(df, X, w, groups):
         res = ridge_cv(X[mask], T[mask], wm * len(wm) / wm.sum(), gm, lo, hi, zero_ref, phases=phase[mask])
         rows.append({"target": name, **res, "n_participants": len(np.unique(gm)), "n_windows": int(mask.sum())})
 
-    allrows = np.ones(len(df), dtype=bool)
     has_raw = all(c in df.columns for c in RAW_COLUMNS)
     has_stress = "raw_stress" in df.columns
     raw3 = df[RAW_COLUMNS].astype(float).to_numpy() if has_raw else None
     st = df[["raw_stress"]].astype(float).to_numpy() if has_stress else None
     if has_raw:
-        run("guna_abs", raw3.clip(0, 10) / 10, allrows, 0, 1, False)
+        run("guna_abs", raw3.clip(0, 10) / 10, np.isfinite(raw3).all(1), 0, 1, False)
     if has_stress:
-        run("stress_abs", st.clip(0, 10) / 10, allrows, 0, 1, False)
-    if all(c in df.columns for c in BASELINE_COLUMNS):
-        moved = phase != "baseline"
-        if has_raw:
-            b3 = df[BASELINE_COLUMNS[:3]].astype(float).to_numpy()
-            run("guna_delta", (raw3 - b3) / 10, moved & np.isfinite(raw3).all(1) & np.isfinite(b3).all(1), -1, 1, True)
-        if has_stress:
-            bs = df[[BASELINE_COLUMNS[3]]].astype(float).to_numpy()
-            run("stress_delta", (st - bs) / 10, moved & np.isfinite(st[:, 0]) & np.isfinite(bs[:, 0]), -1, 1, True)
+        run("stress_abs", st.clip(0, 10) / 10, np.isfinite(st[:, 0]), 0, 1, False)
+    moved = phase != "baseline"
+    if has_raw and all(c in df.columns for c in BASELINE_COLUMNS[:3]):
+        b3 = df[BASELINE_COLUMNS[:3]].astype(float).to_numpy()
+        run("guna_delta", (raw3.clip(0, 10) - b3.clip(0, 10)) / 10,
+            moved & np.isfinite(raw3).all(1) & np.isfinite(b3).all(1), -1, 1, True)
+    if has_stress and BASELINE_COLUMNS[3] in df.columns:
+        bs = df[[BASELINE_COLUMNS[3]]].astype(float).to_numpy()
+        run("stress_delta", (st.clip(0, 10) - bs.clip(0, 10)) / 10,
+            moved & np.isfinite(st[:, 0]) & np.isfinite(bs[:, 0]), -1, 1, True)
     return pd.DataFrame(rows)
 
 
@@ -429,7 +447,7 @@ def fit_stress_tension(df, X, w, groups, features):
     if len(np.unique(gm)) < 3:
         return None
     Xf = X[mask][:, idx]
-    T = ((st - bs) / 10)[mask][:, None]
+    T = ((np.clip(st, 0, 10) - np.clip(bs, 0, 10)) / 10)[mask][:, None]
     wm = w[mask] / pd.Series(w[mask]).groupby(gm).transform("sum").to_numpy()
     wm = wm * len(wm) / wm.sum()
     res = ridge_cv(Xf, T, wm, gm, -1, 1, True, phases=phase[mask])
@@ -467,7 +485,9 @@ def fit_final(X, Y, w, groups, features, C, df=None):
         models[m] = {"features": mod["cols"], "imputer_median": np.nan_to_num(imp.statistics_).tolist(),
                      "mean": sc.mean_.tolist(), "scale": sc.scale_.tolist(), "W": mod["W"].tolist(), "classes": GUNAS}
     oof = modality_oof(X, Y, w, groups, features, C)
-    fusion = fit_fusion({m: v[0] for m, v in oof.items()}, {m: v[1] for m, v in oof.items()}, Y, w) if oof else None
+    prior = weighted_mean(Y, w)
+    fusion = fit_fusion({m: v[0] for m, v in oof.items()}, {m: v[1] for m, v in oof.items()},
+                        Y, w, fallback=prior) if oof else None
     return {"meta": {"trainer_version": "0.5", "C": C, "n_participants": int(len(np.unique(groups))),
                      "n_windows": int(len(Y)), "target": "self-reported state (compositional)",
                      "warning": "Experimental. Trained on self-report; not a validated measure."},
@@ -507,7 +527,7 @@ def main():
         mods = [m for m in mods if m in oof]
         if mods:
             preds[name] = fuse_predictions({m: oof[m][0] for m in mods}, {m: oof[m][1] for m in mods},
-                                           {m: 1 / len(mods) for m in mods})
+                                           {m: 1 / len(mods) for m in mods}, fallback=const)
     preds["fusion_learned"], fusion_rows = nested_fusion(X, Y, w, groups, feats, args.C)
 
     reg = regression_experiments(df, X, w, groups)

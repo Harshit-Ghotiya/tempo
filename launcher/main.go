@@ -61,7 +61,7 @@ func dataDir() string { // downloaded models and the log live here
 func initLog() {
 	_ = os.MkdirAll(dataDir(), 0o755)
 	w := io.Writer(os.Stdout)
-	if f, err := os.OpenFile(filepath.Join(dataDir(), "tempo.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
+	if f, err := os.OpenFile(filepath.Join(dataDir(), "tempo.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 		w = io.MultiWriter(os.Stdout, f)
 	}
 	logger = log.New(w, "", log.LstdFlags)
@@ -132,12 +132,13 @@ func modelPath(name string) (string, error) {
 		return "", err
 	}
 	n, err := io.Copy(f, resp.Body)
-	f.Close()
-	if err != nil || n <= minModel {
+	closeErr := f.Close()
+	if err != nil || closeErr != nil || n <= minModel {
 		os.Remove(tmp)
 		return "", fmt.Errorf("download incomplete")
 	}
 	if err := os.Rename(tmp, p); err != nil {
+		os.Remove(tmp)
 		return "", err
 	}
 	logger.Printf("Saved %s (%.1f MB)", name, float64(n)/1e6)
@@ -220,7 +221,7 @@ func main() {
 		w.Header().Set("Cache-Control", "no-store")
 		files.ServeHTTP(w, r)
 	})
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(ln)
 	if ln6, err := net.Listen("tcp", "[::1]:"+strconv.Itoa(p)); err == nil {
 		go srv.Serve(ln6)

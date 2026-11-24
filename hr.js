@@ -80,16 +80,37 @@ export function createRoiStabilizer(q = 0.015, r = 0.4, deadband = 0.012) {
 // landmark position in face widths. Each sub-ROI slot is retained if present in >= 80% of frames (>= 2 active slots),
 // falling back to the frame mean [r,g,b] on isolated dropped frames; mx/my require 100% coverage.
 export function resample(s) {
+  if (!s || !s.length) return { R: [], G: [], B: [], n: 0, SUB: null, MX: null, MY: null };
   let startIdx = 0;
   for (let i = 1; i < s.length; i++) {
     if (s[i].t - s[i - 1].t > 650) startIdx = i;
   }
   if (startIdx > 0) s = s.slice(startIdx);
   const t0 = s[0].t, n = Math.floor((s[s.length - 1].t - t0) / 1e3 * FS), R = [], G = [], B = [];
-  const validSub = (o, k) => Array.isArray(o.sub?.[k]) && o.sub[k].length === 3;
+  const validSub = (o, k) => Array.isArray(o.sub?.[k]) && o.sub[k].length === 3 && o.sub[k].every(Number.isFinite);
   const activeSub = [0, 1, 2].filter(k => s.filter(o => validSub(o, k)).length >= 0.8 * s.length);
   const hasMot = s.every(o => Number.isFinite(o.mx) && Number.isFinite(o.my));
   const SUB = activeSub.length >= 2 ? activeSub.map(() => ({ R: [], G: [], B: [] })) : null, MX = hasMot ? [] : null, MY = hasMot ? [] : null;
+  // Interpolate isolated dropped frames per sub-ROI from that same slot's nearest valid samples (never the pooled mean).
+  const filledSub = SUB ? activeSub.map(k => {
+    const out = new Array(s.length), validIdx = [];
+    for (let m = 0; m < s.length; m++) {
+      if (validSub(s[m], k)) { out[m] = s[m].sub[k]; validIdx.push(m); }
+    }
+    const first = validIdx[0], last = validIdx[validIdx.length - 1];
+    for (let m = 0; m < first; m++) out[m] = s[first].sub[k];
+    for (let m = last + 1; m < s.length; m++) out[m] = s[last].sub[k];
+    for (let idxV = 0; idxV < validIdx.length - 1; idxV++) {
+      const a0 = validIdx[idxV], a1 = validIdx[idxV + 1];
+      if (a1 - a0 <= 1) continue;
+      const p0 = s[a0].sub[k], p1 = s[a1].sub[k], dt = (s[a1].t - s[a0].t) || 1;
+      for (let m = a0 + 1; m < a1; m++) {
+        const w = Math.min(1, Math.max(0, (s[m].t - s[a0].t) / dt));
+        out[m] = [p0[0] + w * (p1[0] - p0[0]), p0[1] + w * (p1[1] - p0[1]), p0[2] + w * (p1[2] - p0[2])];
+      }
+    }
+    return out;
+  }) : null;
   let j = 0;
   for (let i = 0; i < n; i++) {
     const tt = t0 + i * 1e3 / FS;
@@ -98,8 +119,7 @@ export function resample(s) {
     R.push(a.r + u * (b.r - a.r)); G.push(a.g + u * (b.g - a.g)); B.push(a.b + u * (b.b - a.b));
     if (SUB) {
       for (let idxSub = 0; idxSub < activeSub.length; idxSub++) {
-        const k = activeSub[idxSub];
-        const p = validSub(a, k) ? a.sub[k] : [a.r, a.g, a.b], q = validSub(b, k) ? b.sub[k] : [b.r, b.g, b.b];
+        const p = filledSub[idxSub][j], q = filledSub[idxSub][j + 1];
         SUB[idxSub].R.push(p[0] + u * (q[0] - p[0])); SUB[idxSub].G.push(p[1] + u * (q[1] - p[1])); SUB[idxSub].B.push(p[2] + u * (q[2] - p[2]));
       }
     }
@@ -164,7 +184,8 @@ export function posClean(R, G, B) {
   if (n < l) return H;
   const mr0 = mean(R) || 1, mg0 = mean(G) || 1, mb0 = mean(B) || 1;
   const hpNoise = biquad(true, 4.5);
-  const gNoise = std(filt(G.map(v => v / mg0), hpNoise)), bNoise = std(filt(B.map(v => v / mb0), hpNoise));
+  // Remove DC and apply zero-phase highpass so edge step transients do not swamp CMOS noise comparison
+  const gNoise = std(filtfilt(G.map(v => v / mg0 - 1), hpNoise)), bNoise = std(filtfilt(B.map(v => v / mb0 - 1), hpNoise));
   // Under warm indoor lighting, blue channel CMOS noise spikes; synthesize clean chrominance reference
   const Buse = bNoise > 2.2 * gNoise ? G.map((g, i) => mb0 * (0.7 * (g / mg0) + 0.3 * (R[i] / mr0))) : B;
 
@@ -175,9 +196,15 @@ export function posClean(R, G, B) {
   // Regularize local 1.6 s alpha with global low-frequency covariance to avoid cross-modulating slow drift
   const S1g = Gf.map((v, i) => v / mgf - Bf[i] / mbf);
   const S2g = Gf.map((v, i) => -2 * Rf[i] / mrf + v / mgf + Bf[i] / mbf);
+  const m1g = mean(S1g), m2g = mean(S2g);
   let cov = 0, var2 = 0;
-  for (let i = 0; i < n; i++) { cov += S1g[i] * S2g[i]; var2 += S2g[i] * S2g[i]; }
-  const aGlobal = cov < 0 && var2 > 1e-12 ? -cov / var2 : std(S1g) / (std(S2g) || 1);
+  for (let i = 0; i < n; i++) {
+    const d1 = S1g[i] - m1g, d2 = S2g[i] - m2g;
+    cov += d1 * d2;
+    var2 += d2 * d2;
+  }
+  const rawGlobal = cov < 0 && var2 > 1e-12 ? -cov / var2 : std(S1g) / (std(S2g) || 1);
+  const aGlobal = Math.max(0.05, Math.min(10, rawGlobal));
 
   const hann = new Float64Array(l);
   for (let i = 0; i < l; i++) hann[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (l - 1));
@@ -186,7 +213,8 @@ export function posClean(R, G, B) {
     const r = Rf.slice(t, t + l), g = Gf.slice(t, t + l), b = Bf.slice(t, t + l);
     const mr = mean(r) || 1, mg = mean(g) || 1, mb = mean(b) || 1;
     const s1 = g.map((v, i) => v / mg - b[i] / mb), s2 = g.map((v, i) => -2 * r[i] / mr + v / mg + b[i] / mb);
-    const a = 0.65 * aGlobal + 0.35 * (std(s1) / (std(s2) || 1));
+    const aLocal = Math.min(10, std(s1) / (std(s2) || 1));
+    const a = 0.65 * aGlobal + 0.35 * aLocal;
     const h = s1.map((v, i) => v + a * s2[i]), m = mean(h);
     for (let i = 0; i < l; i++) {
       const w = hann[i];
@@ -216,14 +244,14 @@ export function sqi(x, fLo = F_LO, fHi = F_HI) {
   return Math.max(0, Math.min(1, best));
 }
 
-function spectrum(x) { // P[k] = Hann-windowed power at F0 + k*STEP Hz
+function spectrum(x) { // P[k] = Hann-windowed power at F0 + k*STEP Hz via Goertzel recurrence
   const n = x.length, m = mean(x);
-  const w = Array.from(x, (v, i) => (v - m) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)))), P = [];
+  const w = Float64Array.from(x, (v, i) => (v - m) * (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (n - 1)))), P = [];
   for (let k = 0; k <= idx(F_MAX); k++) {
-    const f = F0 + k * STEP;
-    let re = 0, im = 0;
-    for (let i = 0; i < n; i++) { const a = 2 * Math.PI * f * i / FS; re += w[i] * Math.cos(a); im -= w[i] * Math.sin(a); }
-    P.push(re * re + im * im);
+    const coeff = 2 * Math.cos(2 * Math.PI * (F0 + k * STEP) / FS);
+    let s1 = 0, s2 = 0;
+    for (let i = 0; i < n; i++) { const s0 = w[i] + coeff * s1 - s2; s2 = s1; s1 = s0; }
+    P.push(Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2));
   }
   return P;
 }
@@ -345,7 +373,9 @@ export function analyze(samples, opts = {}) {
     if (h >= F_LO && pw(h) >= 0.22 * c.p) {
       const l0 = Math.round(FS / h);
       const corr = Math.max(autocorrAt(l0 - 1), autocorrAt(l0), autocorrAt(l0 + 1));
-      cands.push({ f: h, bpm: 60 * h, p: pw(h), s: pw(h) + 0.5 * c.p, snr: snr(h), corr: Math.max(0, corr), half: true });
+      if (corr >= 0.12) {
+        cands.push({ f: h, bpm: 60 * h, p: pw(h), s: pw(h) + 0.5 * c.p, snr: snr(h), corr, half: true });
+      }
     }
   }
   return { cands, P, x, sqi: sqi(x), motion: false, flagged, blockStd: mb.clean, roiW: roi ? roi.w : null };
@@ -399,6 +429,7 @@ export function createTracker() {
         dirty = 0;
       } else if (++dirty >= 30) { refStd = 0; dirty = 0; } // persistent motion abstention: re-learn the clean reference
       const tracking = hr !== null && now - tHr < 20e3 + Math.min(15e3, holdMs);
+      if (!tracking && hr !== null) { hr = null; hrv = null; }
       if (A.motion) {
         if (tracking) holdMs += dtW;
         return out(null, 0, NaN, null, true);
@@ -447,7 +478,7 @@ export function createTracker() {
           if (pick.q >= 0.25) lock.n++;
         } else { // nothing near the tracked rate: re-acquire alternate peak after 4 consistent windows
           alt = best.q >= 0.25 && Math.abs(best.bpm - alt.bpm) <= 5 ? { bpm: best.bpm, n: alt.n + 1 } : { bpm: best.bpm, n: best.q >= 0.25 ? 1 : 0 };
-          if (alt.n >= 4 || (alt.n >= 3 && best.q >= 0.32 && best.corr >= 0.28)) { pick = best; hr = null; alt = { bpm: 0, n: 0 }; lock = { bpm: best.bpm, n: 1 }; }
+          if (alt.n >= 4 || (alt.n >= 3 && best.q >= 0.32 && best.corr >= 0.28)) { pick = best; hr = null; hrv = null; alt = { bpm: 0, n: 0 }; lock = { bpm: best.bpm, n: 1 }; }
         }
       }
       if (!pick) return out(null, best.q);
@@ -458,7 +489,7 @@ export function createTracker() {
       const rawHrv = rmssd(A.x, hr);
       if (rawHrv !== null) hrv = hrv === null ? rawHrv : hrv + 0.35 * (rawHrv - hrv);
       tHr = now;
-      return out(hr, Math.max(pick.q, Q_MIN), pick.snr, hrv);
+      return out(hr, Math.max(pick.q, Q_MIN), pick.snr, rawHrv !== null ? hrv : null);
     },
   };
 }

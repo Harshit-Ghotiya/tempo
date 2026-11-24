@@ -652,7 +652,12 @@ body[data-stage=live] .cam-badge-live { display: inline-flex; }
   justify-content: center;
 }
 body[data-stage=setup] .cam-affect,
-body[data-stage=setup] .cam-actions {
+body[data-stage=setup] #openSummary,
+body[data-stage=setup] #exp {
+  display: none;
+}
+body[data-video="0"] .camcard,
+body[data-video="0"] .cam-controls {
   display: none;
 }
 

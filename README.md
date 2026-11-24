@@ -5,7 +5,7 @@
 **Privacy-Preserving On-Device Multimodal Stress & Affect Estimation**
 
 [![Version](https://img.shields.io/badge/version-v0.8.5-2563EB.svg)](VERSION.txt)
-[![Tests](https://img.shields.io/badge/tests-49_passed-16A34A.svg)](#testing--verification)
+[![Tests](https://img.shields.io/badge/tests-58_passed-16A34A.svg)](#quantitative-benchmarks-synthetic-v085)
 [![Privacy](https://img.shields.io/badge/privacy-100%25_On--Device_Wasm-0D9488.svg)](#privacy-invariant)
 [![Course](https://img.shields.io/badge/course-IKO_103_·_IIT_Roorkee-4F46E5.svg)](STUDY_PROTOCOL.md)
 [![Validation](https://img.shields.io/badge/validation-LOPO_Dual--Baseline-D97706.svg)](#quantitative-benchmarks-synthetic-v085)
@@ -18,7 +18,7 @@
 
 ---
 
-> **Evaluation Scope:** Predicting self-reported change-from-baseline stress (`stress_delta`) is the primary supervised target. Compositional Triguna (*Sattva*, *Rajas*, *Tamas*) is a secondary course-demo layer (`DEMO_GUNA = false` by default). The default portal tension weights (`TENSION` in [`app.js`](app.js)) are unvalidated priors and are dynamically swapped for LOPO-fitted weights **only** when `N >= 20` and `vs_phase < 0`. Quantitative numbers below come from automated synthetic benchmarks (`49/49` JS tests + `20`-participant synthetic LOPO runs); multi-participant real-face cohort studies remain ongoing.
+> **Evaluation Scope:** Predicting self-reported change-from-baseline stress (`stress_delta`) is the primary supervised target. Compositional Triguna (*Sattva*, *Rajas*, *Tamas*) is a secondary course-demo layer (`DEMO_GUNA = false` by default). The default portal tension weights (`TENSION` in [`app.js`](app.js)) are unvalidated priors and are dynamically swapped for LOPO-fitted weights **only** when `N >= 20` and `vs_phase < 0`. Quantitative numbers below come from automated synthetic benchmarks (`53/53` JS tests + `5/5` Python tests + `20`-participant synthetic LOPO runs); multi-participant real-face cohort studies remain ongoing.
 
 ---
 
@@ -51,12 +51,13 @@ python3 -m http.server 8000
 ```bash
 npm ci
 npm run check   # Strict syntax check across all 9 JS modules
-npm test        # 49/49 unit, DOM contract, rPPG, and dropout tests
+npm test        # 53/53 unit, DOM contract, rPPG, and dropout tests
 ```
 
-### 3. Run the Python Audit & LOPO Training Pipeline
+### 3. Run the Python Tests, Audit & LOPO Training Pipeline
 ```bash
 pip install -r requirements.txt
+python3 -m unittest discover -s tests -p "test_*.py" -v  # 5/5 Python LOPO, dropout, audit & rPPG tests
 mkdir -p data
 python3 tools/make_synthetic.py signal data/sessions.csv
 python3 tools/audit_features.py data/sessions.csv
@@ -107,6 +108,7 @@ When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or p
 | `motionBurst` (4 s motion transient) | `86%` | `0.2` | `9.5` |
 | `motionHijack` (10 s 51 bpm head-motion) | `76%` | `0.28` | `3.82` (never hijacked) |
 | `subROI` fused vs. pooled (51 bpm forehead artefact) | `100%` | `0.21` | Pooled fails at `16.96` MAE |
+| `warmLightNoisyBlue` (high CMOS blue noise) | `98%` | `1.1` | `3.5` MAE (`v0.4` blue transient degrades RG fallback) |
 | `noiseOnly` (white noise rejection) | `0%` | `NaN` | `52.9` (`0%` false positives) |
 
 </details>
@@ -118,7 +120,7 @@ When the head pitches downward (`downLookOf` — e.g., reading a desk sheet or p
 | :--- | :--- | :--- |
 | **`stress_delta` (LOPO Ridge, 15 features)** | `MAE = 0.072`, Spearman $\rho = 0.819$ | Beats Constant (`vs_mean = -0.082`) & Phase-Mean (`vs_phase = -0.021`) |
 | **Portal `stress_tension` Gate** | `N = 20`, `vs_phase = -0.016` | Swaps priors for fitted weights only when `N >= 20` & `vs_phase < 0` |
-| **Intermittent Channel Dropout** | `49/49` tests pass | Renormalizes `face+rppg+pose` → `face+pose` → `face` → `null` abstention |
+| **Intermittent Channel Dropout** | `53/53` JS + `5/5` Python pass | Renormalizes `face+rppg+pose` → `face+pose` → `face` → `null` abstention |
 | **Directional Stressor Concordance** | `10/11` concordant (`sign_p < 0.001`) | Session $\times$ phase Spearman $\rho = 0.783$–$0.906$; flags inverse synthetic `blink` |
 | **7-AU Posed Selectivity (`--posed --au`)** | Leak ratios `0.003–0.200` | Passes $\le 0.50$ cross-talk gate across all 7 FACS AUs (`browLower`..`smile`) |
 
@@ -151,8 +153,9 @@ tempo/
 │   ├── evaluate_rppg.py            # Offline rPPG trace evaluation utility
 │   └── make_synthetic.py           # Synthetic 20-participant cohort generator for CI & smoke checks
 ├── tests/
-│   ├── ui.test.mjs                 # 24 DOM contract, trend, Stroop, breathing & dropout fusion tests
-│   └── hr.test.mjs                 # 25 rPPG waveform, sub-ROI occlusion & motion-rejection tests
+│   ├── ui.test.mjs                 # 25 DOM contract, trend, Stroop, breathing & dropout fusion tests
+│   ├── hr.test.mjs                 # 28 rPPG waveform, sub-ROI occlusion & motion-rejection tests
+│   └── test_python_pipeline.py     # 5 Python LOPO, dropout, audit & rPPG unit tests
 ├── launcher/                       # Go cross-platform standalone offline executable builder
 └── docs/                           # Architecture spec, patent prior-art benchmark, protocol & assets
 ```

@@ -1,9 +1,10 @@
 // ui.js: DOM helpers, theme state, dialog management, and session summary renderer for Tempo.
 // Pure DOM manipulation without camera or MediaPipe dependencies so Node + JSDOM can test it directly.
-import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.8.0';
+import { smoothPath, niceRange, segments, zoneOf } from './chart.js?v=0.8.5';
 
 export const $ = id => document.getElementById(id);
 export const stage = n => { document.body.dataset.stage = n; };
+export const escHtml = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const level = q => (q == null ? '' : q >= 0.6 ? 'good' : q >= 0.3 ? 'fair' : 'poor');
@@ -16,6 +17,7 @@ export function toast(msg, ms = 3400) {
   t.classList.add('on');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('on'), ms);
+  toastTimer.unref?.();
 }
 
 // Smoothly eases a numeric readout to its new value; null/NaN renders an en-dash.
@@ -125,11 +127,14 @@ export function initRate(id) {
   const r = i.closest('.rate');
   const o = r.querySelector('output');
   i.style.setProperty('--control-value', i.value);
-  i.addEventListener('input', () => {
+  const mark = () => {
     r.dataset.t = '1';
     o.textContent = i.value;
     i.style.setProperty('--control-value', i.value);
-  });
+  };
+  i.addEventListener('input', mark);
+  i.addEventListener('change', mark);
+  i.addEventListener('pointerdown', mark);
 }
 
 export function resetRate(id) {
@@ -180,13 +185,27 @@ export function initTheme(btn) {
   }
 }
 
+let lastDrawerFocus = null;
+
 export function drawer(open) {
   const dr = $('drawer'), sc = $('scrim');
   if (!dr || !sc) return;
   dr.classList.toggle('open', open);
   sc.classList.toggle('open', open);
   dr.setAttribute('aria-hidden', String(!open));
-  if (open) $('rStress')?.focus({ preventScroll: true });
+  if (open) {
+    lastDrawerFocus = typeof document !== 'undefined' ? document.activeElement : null;
+    dr.inert = false;
+    dr.removeAttribute('inert');
+    $('rStress')?.focus({ preventScroll: true });
+  } else {
+    dr.inert = true;
+    dr.setAttribute('inert', '');
+    if (lastDrawerFocus && typeof lastDrawerFocus.focus === 'function') {
+      lastDrawerFocus.focus({ preventScroll: true });
+    }
+    lastDrawerFocus = null;
+  }
 }
 
 // Light coach and pulse heuristics
@@ -234,7 +253,7 @@ export const hrvShown = (hrv, q) =>
 
 // Modal dialog helpers (<dialog closedby="any"> with fallback)
 export function openDialog(d) {
-  if (!d) return;
+  if (!d || d.open) return;
   if (typeof d.showModal === 'function') {
     try { d.showModal(); } catch (e) { d.setAttribute('open', ''); }
   } else {
@@ -290,15 +309,15 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     sumPhases.innerHTML = (stats || []).map(s => {
       const color = PHASE_COLORS[s.phase] || 'var(--text-3)';
       const repHtml = s.report ? `
-        <div class="sum-stat-big">${s.report.stress}/10</div>
-        <div class="sum-bar-track"><div class="sum-bar-fill" style="width:${Math.min(100, Math.max(0, s.report.stress * 10))}%"></div></div>
+        <div class="sum-stat-big">${Number(s.report.stress)}/10</div>
+        <div class="sum-bar-track"><div class="sum-bar-fill" style="width:${Math.min(100, Math.max(0, Number(s.report.stress) * 10))}%"></div></div>
       ` : '<div class="sum-subtext dusk">No check-in rating</div>';
 
       const zn = zoneOf(s.tension.mean);
       const znLabel = zn ? ZONE_LABELS[zn] : '';
       const tnStr = s.tension.mean != null ? `${s.tension.mean >= 0 ? '+' : '−'}${Math.abs(s.tension.mean).toFixed(2)}` : '–';
       const pkStr = s.tension.peak != null ? `Peak: ${s.tension.peak >= 0 ? '+' : '−'}${Math.abs(s.tension.peak).toFixed(2)}` : '';
-      const hrStr = s.hr.mean != null ? `Pulse: ${Math.round(s.hr.mean)} bpm (${s.hr.n} readings)` : 'No pulse lock';
+      const hrStr = s.hr.mean != null ? `Pulse: ${Math.round(s.hr.mean)} bpm (${Number(s.hr.n)} readings)` : 'No pulse lock';
       const valStr = s.valence != null && s.arousal != null ? `Valence: ${s.valence.toFixed(2)} · Arousal: ${s.arousal.toFixed(2)}` : '';
       const gunaStr = s.guna?.sattva != null
         ? `Sattva ${Math.round(s.guna.sattva * 100)}% · Rajas ${Math.round(s.guna.rajas * 100)}% · Tamas ${Math.round(s.guna.tamas * 100)}%`
@@ -307,9 +326,9 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       return `
         <div class="sumphase-card" style="--phase-color:${color}">
           <div class="sumphase-head">
-            <h3 class="sumphase-title">${s.phase}</h3>
+            <h3 class="sumphase-title">${escHtml(s.phase)}</h3>
           </div>
-          <p class="sumphase-basis">${s.basis} (${s.n} windows)</p>
+          <p class="sumphase-basis">${escHtml(s.basis)} (${Number(s.n)} windows)</p>
           <div class="sum-compare">
             <div>
               <div class="sum-col-label">You reported</div>
@@ -317,8 +336,8 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
             </div>
             <div>
               <div class="sum-col-label">Tempo measured</div>
-              <div class="sum-stat-big">${tnStr} <span style="font-size:14px;color:var(--text-2);font-family:var(--font-display)">${znLabel}</span></div>
-              <div class="sum-subtext">${[pkStr, hrStr, valStr, gunaStr].filter(Boolean).join('<br>')}</div>
+              <div class="sum-stat-big">${tnStr} <span style="font-size:14px;color:var(--text-2);font-family:var(--font-display)">${escHtml(znLabel)}</span></div>
+              <div class="sum-subtext">${[pkStr, hrStr, valStr, gunaStr].filter(Boolean).map(escHtml).join('<br>')}</div>
             </div>
           </div>
         </div>
@@ -337,10 +356,10 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
           Cognitive Stressor: Stroop Color-Word Challenge
         </div>
         <div>
-          <b>${meta.stroop.trials}</b> trials completed ·
-          <b>${meta.stroop.accuracy}%</b> accuracy ·
-          <b>${meta.stroop.meanRtMs} ms</b> mean reaction time
-          ${meta.stroop.interferenceMs > 0 ? `· <b>+${meta.stroop.interferenceMs} ms</b> Stroop cognitive interference delay` : ''}
+          <b>${Number(meta.stroop.trials)}</b> trials completed ·
+          <b>${Number(meta.stroop.accuracy)}%</b> accuracy ·
+          <b>${Number(meta.stroop.meanRtMs)} ms</b> mean reaction time
+          ${meta.stroop.interferenceMs > 0 ? `· <b>+${Number(meta.stroop.interferenceMs)} ms</b> Stroop cognitive interference delay` : ''}
         </div>
       `;
     } else {
@@ -357,11 +376,11 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       sumBreathe.innerHTML = `
         <div class="sumstroop-title" style="color:var(--teal)">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2m0 14v2m-9-9h2m14 0h2"/></svg>
-          Parasympathetic Recovery: ${meta.breathe.patternName || 'Guided Breathing'}
+          Parasympathetic Recovery: ${escHtml(meta.breathe.patternName || 'Guided Breathing')}
         </div>
         <div>
-          <b>${meta.breathe.durationS} s</b> practiced ·
-          <b>${meta.breathe.cyclesCompleted || 0}</b> complete breath cycle(s)
+          <b>${Number(meta.breathe.durationS)} s</b> practiced ·
+          <b>${Number(meta.breathe.cyclesCompleted || 0)}</b> complete breath cycle(s)
         </div>
       `;
     } else {
@@ -395,7 +414,7 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       const x1 = xOf(pc.t), x2 = xOf(nextT);
       const fill = pc.phase === 'stressor' ? 'rgba(255,149,0,0.08)' : pc.phase === 'recovery' ? 'rgba(48,176,199,0.08)' : 'transparent';
       phaseRects += `<rect x="${x1.toFixed(1)}" y="${padT}" width="${Math.max(0, x2 - x1).toFixed(1)}" height="${H - padT - padB}" fill="${fill}"/>`;
-      phaseRects += `<text x="${(x1 + 6).toFixed(1)}" y="${padT + 14}" fill="var(--text-3)" font-size="10" font-weight="600" text-transform="uppercase">${pc.phase}</text>`;
+      phaseRects += `<text x="${(x1 + 6).toFixed(1)}" y="${padT + 14}" fill="var(--text-3)" font-size="10" font-weight="600" style="text-transform:uppercase">${escHtml(pc.phase)}</text>`;
     }
 
     const y0 = yOf(0);
@@ -415,7 +434,7 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
       checkMarks += `
         <line x1="${cx.toFixed(1)}" y1="${padT}" x2="${cx.toFixed(1)}" y2="${H - padB}" stroke="var(--line)" stroke-width="1"/>
         <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="4.5" fill="var(--accent)" stroke="#ffffff" stroke-width="2"/>
-        <text x="${cx.toFixed(1)}" y="${(cy - 9).toFixed(1)}" fill="var(--text)" font-size="11" font-weight="700" text-anchor="middle">${rep.stress}/10</text>
+        <text x="${cx.toFixed(1)}" y="${(cy - 9).toFixed(1)}" fill="var(--text)" font-size="11" font-weight="700" text-anchor="middle">${Number(rep.stress)}/10</text>
       `;
     }
 
@@ -444,8 +463,8 @@ export function renderSummary(stats, checks, log = [], meta = {}) {
     const rowsHtml = (checks || []).map(c => {
       const statusClass = c.agree === true ? 'agree' : c.agree === false ? 'diff' : 'na';
       const statusText = c.agree === true ? '✓ Same direction' : c.agree === false ? '✗ Different direction' : 'Not enough data';
-      const fromName = c.from.charAt(0).toUpperCase() + c.from.slice(1);
-      const toName = c.to.charAt(0).toUpperCase() + c.to.slice(1);
+      const fromName = escHtml(c.from.charAt(0).toUpperCase() + c.from.slice(1));
+      const toName = escHtml(c.to.charAt(0).toUpperCase() + c.to.slice(1));
       return `
         <div class="sumcheck-row">
           <div class="sumcheck-trans">${fromName} → ${toName}</div>

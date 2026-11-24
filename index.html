@@ -8,7 +8,7 @@
 <script>try{const s=localStorage.getItem('color-scheme');document.querySelector('meta[name="color-scheme"]').content=s??'light dark';if(s)document.documentElement.dataset.theme=s}catch(e){}</script>
 <meta name="theme-color" content="#F5F5F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<link rel="stylesheet" href="styles.css?v=0.8.0">
+<link rel="stylesheet" href="styles.css?v=0.8.5">
 </head>
 <body data-stage="consent">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -90,10 +90,10 @@
    <input type="checkbox" id="ok" switch role="switch">
   </label>
   <div class="guided-opt">
-   <label class="guided-lbl">
+   <div class="guided-lbl">
     <input type="checkbox" id="uGuided" checked switch role="switch">
-    <span><b>Phase reminders</b>: chime after <select id="guidedSecs"><option value="60">60s</option><option value="90" selected>90s</option><option value="120">120s</option></select> per phase. You switch phases yourself.</span>
-   </label>
+    <span><label for="uGuided"><b>Phase reminders</b>: chime after</label> <select id="guidedSecs" aria-label="Phase reminder duration"><option value="60">60s</option><option value="90" selected>90s</option><option value="120">120s</option></select> <label for="uGuided">per phase. You switch phases yourself.</label></span>
+   </div>
   </div>
   <div class="act">
    <button class="btn btn-full" id="go" disabled>Start setup</button>
@@ -220,7 +220,7 @@
       <div class="statenum-sub">z-score · experimental</div>
      </div>
     </div>
-    <p class="dusk small">Facial tension compared with your own baseline. Experimental: the weights come from the literature and are not yet validated.</p>
+    <p class="dusk small" id="tensionNote">Facial tension compared with your own baseline. Experimental: the weights come from the literature and are not yet validated.</p>
     <div class="trendwrap">
      <svg id="trend" class="trend" viewBox="0 0 600 140" role="img" aria-label="Facial tension over the last 3 minutes">
       <defs>
@@ -274,7 +274,7 @@
        <b class="pct" id="v_tamas">–</b>
       </div>
      </div>
-     <div class="tile-foot">Agreement: <b id="ag">–</b> · Demo priors, unvalidated</div>
+     <div class="tile-foot">Agreement: <b id="ag">–</b> · <span id="gunaNote">Demo priors, unvalidated</span></div>
     </div>
    </div>
 
@@ -306,7 +306,7 @@
 </main>
 
 <div class="scrim" id="scrim"></div>
-<aside id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
+<aside id="drawer" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="drawerTitle" inert>
  <h2 id="drawerTitle">Check in</h2>
  <p class="dusk">Rate the last minute of <b id="reportPhase">Baseline</b>. Slide each bar to set it; bars you do not touch are not saved.</p>
  <div class="rate rate-stress" data-t="0">
@@ -474,6 +474,6 @@
 </dialog>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js?v=0.8.0"></script>
+<script type="module" src="app.js?v=0.8.5"></script>
 </body>
 </html>

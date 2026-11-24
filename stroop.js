@@ -79,21 +79,22 @@ export function aggregateStroop(results = []) {
       score: 0
     };
   }
-  const valid = results.filter(r => r.rtMs >= 150 && r.rtMs <= 3000);
-  const dataset = valid.length ? valid : results;
-  const correctTrials = dataset.filter(r => r.ok);
+  const trials = results.length;
+  const correctTrials = results.filter(r => r.ok);
   const correct = correctTrials.length;
-  const accuracy = Math.round((correct / dataset.length) * 100);
+  const accuracy = Math.round((correct / trials) * 100);
 
+  const validRt = correctTrials.filter(r => r.rtMs >= 150 && r.rtMs <= 3000);
+  const rtDataset = validRt.length ? validRt : correctTrials;
   const mean = arr => arr.length ? Math.round(arr.reduce((s, v) => s + v, 0) / arr.length) : 0;
-  const meanRtMs = mean(correctTrials.map(r => r.rtMs));
-  const congRt = mean(correctTrials.filter(r => r.isCongruent).map(r => r.rtMs));
-  const incongRt = mean(correctTrials.filter(r => !r.isCongruent).map(r => r.rtMs));
+  const meanRtMs = mean(rtDataset.map(r => r.rtMs));
+  const congRt = mean(rtDataset.filter(r => r.isCongruent).map(r => r.rtMs));
+  const incongRt = mean(rtDataset.filter(r => !r.isCongruent).map(r => r.rtMs));
   const interferenceMs = (congRt > 0 && incongRt > 0) ? Math.max(0, incongRt - congRt) : 0;
-  const score = Math.max(0, correct * 10 - (dataset.length - correct) * 5);
+  const score = Math.max(0, correct * 10 - (trials - correct) * 5);
 
   return {
-    trials: dataset.length,
+    trials,
     correct,
     accuracy,
     meanRtMs,
@@ -135,7 +136,7 @@ export function createStroopTest({
         remainingS--;
         if (typeof onTick === 'function') onTick(remainingS, durationS);
         if (remainingS <= 0) {
-          this.stop();
+          this.stop(false);
         }
       }, 1000);
       timerId.unref?.();
@@ -150,7 +151,7 @@ export function createStroopTest({
     },
 
     handleKey(e) {
-      if (!active || !currentTrial) return null;
+      if (!active || !currentTrial || e?.repeat) return null;
       const key = (e.key || '').toLowerCase();
       // Keys 1-4 map directly to the 4 rotating response buttons
       if (['1', '2', '3', '4'].includes(key)) {
@@ -169,7 +170,7 @@ export function createStroopTest({
       return null;
     },
 
-    stop() {
+    stop(aborted = false) {
       if (!active) return aggregateStroop(results);
       active = false;
       if (timerId) {
@@ -178,7 +179,7 @@ export function createStroopTest({
       }
       currentTrial = null;
       const summary = aggregateStroop(results);
-      if (typeof onFinish === 'function') onFinish(summary);
+      if (typeof onFinish === 'function') onFinish(summary, { aborted: !!aborted });
       return summary;
     },
 
