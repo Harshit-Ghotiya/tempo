@@ -27,7 +27,7 @@ import numpy as np
 import pandas as pd
 
 FEATURES = ["browLower", "browRaise", "lidTight", "eyeWide", "lipTight", "lipDown", "smile", "expressivity",
-            "brow", "lip", "blink", "gaze", "headMove", "hr", "shrug", "sway", "fidget", "perclos"]
+            "brow", "lip", "blink", "gaze", "headMove", "hr", "hrv", "shrug", "sway", "fidget", "perclos"]
 SETUP = {"settle", "calibration"}
 # Expected sign of the change under acute stress (the portal's TENSION / MAP priors; hrv falls under load).
 EXPECT = {"browLower": 1, "lidTight": 1, "lipTight": 1, "lipDown": 1, "smile": -1, "blink": -1, "gaze": 1,
@@ -51,10 +51,17 @@ def audit(df):
     cal = df[df["phase"] == "calibration"] if "phase" in df else df.iloc[:0]
     rows = []
     for f in FEATURES:
-        if f not in df.columns:
+        has_raw = f in df.columns
+        has_z = ("z_" + f) in df.columns
+        if not has_raw and not has_z:
             continue
-        x, c = live[f].dropna().to_numpy(float), cal[f].dropna().to_numpy(float)
-        zc = live["z_" + f].dropna().to_numpy(float) if "z_" + f in df.columns else np.array([])
+        zc = pd.to_numeric(live["z_" + f], errors="coerce").dropna().to_numpy(float) if has_z else np.array([])
+        if has_raw:
+            x = pd.to_numeric(live[f], errors="coerce").dropna().to_numpy(float)
+            c = pd.to_numeric(cal[f], errors="coerce").dropna().to_numpy(float)
+        else:
+            x = zc
+            c = pd.to_numeric(cal["z_" + f], errors="coerce").dropna().to_numpy(float) if len(cal) else np.array([])
         r = {"feature": f, "coverage": len(x) / max(1, len(live)), "zeros": float(np.mean(np.abs(x) < 1e-9)) if len(x) else np.nan,
              "median": np.median(x) if len(x) else np.nan, "mad": mad(x),
              "drift": (np.median(x) - np.median(c)) / max(mad(c), 1e-9) if len(x) and len(c) > 5 else np.nan,
@@ -62,7 +69,7 @@ def audit(df):
         flags = []
         if r["coverage"] < 0.5 or r["zeros"] > 0.8 or not r["mad"] > 0:
             flags.append("dead")
-        if f + "" != "perclos" and r["z_coverage"] < 0.5:
+        if f != "perclos" and r["z_coverage"] < 0.5:
             flags.append("no-baseline")
         if r["z_clipped"] > 0.25:
             flags.append("clipped")
@@ -109,7 +116,7 @@ def direction(frames):
         if "phase" not in df.columns:
             continue
         live = live_rows(df)
-        if {"participant_id", "session_id"} <= set(live.columns) and live["participant_id"].nunique() > 1:
+        if {"participant_id", "session_id"} <= set(live.columns):
             key = live["participant_id"].astype(str) + "_" + live["session_id"].astype(str)
             sessions = live.groupby(key, sort=False)
         elif "session_id" in live.columns:
@@ -208,12 +215,13 @@ def posed_audit(df, labels=None, au=None, au_offset=0.0):
         print("posed audit: need AU composite columns and >= 3 whole windows inside 'neutral' segments")
         return None, None, None
     neu = df.loc[seg["neutral"]]
+    num = {f: pd.to_numeric(df[f], errors="coerce") for f in feats}
     D = {}
     for e, m in seg.items():
         if e == "neutral" or m.sum() < 3:
             continue
-        D[e] = {f: (df.loc[m, f].median() - neu[f].median())
-                / max(mad(neu[f].dropna().to_numpy(float)), AU_FLOOR.get(f, 1e-3)) for f in feats}
+        D[e] = {f: (num[f].loc[m].median() - num[f].loc[seg["neutral"]].median())
+                / max(mad(num[f].loc[seg["neutral"]].dropna().to_numpy(float)), AU_FLOOR.get(f, 1e-3)) for f in feats}
     D = pd.DataFrame(D).T
     rows = []
     for e, f in POSED_TARGET.items():
@@ -238,9 +246,9 @@ def posed_audit(df, labels=None, au=None, au_offset=0.0):
                 continue
             y = au[cols].apply(pd.to_numeric, errors="coerce").mean(axis=1).to_numpy(float)
             ext = np.array([pd.Series(y[(ts >= a) & (ts <= b)]).mean() for a, b in zip(ws, we)], dtype=float)
-            rho = spearman(df[f].to_numpy(float), ext)
+            rho = spearman(num[f].to_numpy(float), ext)
             corr.append({"feature": f, "external": "+".join(cols), "spearman": rho,
-                         "n_windows": int((np.isfinite(ext) & np.isfinite(df[f].to_numpy(float))).sum()),
+                         "n_windows": int((np.isfinite(ext) & np.isfinite(num[f].to_numpy(float))).sum()),
                          "pass": bool(np.isfinite(rho) and rho >= 0.6)})
     return D, pd.DataFrame(rows), pd.DataFrame(corr)
 

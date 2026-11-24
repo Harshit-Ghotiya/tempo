@@ -87,14 +87,24 @@ test('sliders count only once touched and reset to untouched', () => {
   assert.equal(ui.touched('rStress'), true); assert.equal($('oStress').textContent, '7');
   ui.resetRate('rStress');
   assert.equal(ui.touched('rStress'), false); assert.equal($('oStress').textContent, '–');
+  // Clicking directly on midpoint 5 without changing value still registers as touched
+  $('rStress').dispatchEvent(new dom.window.Event('pointerdown', { bubbles: true }));
+  assert.equal(ui.touched('rStress'), true); assert.equal($('oStress').textContent, '5');
+  ui.resetRate('rStress');
+  assert.equal(ui.touched('rStress'), false); assert.equal($('oStress').textContent, '–');
 });
 
 test('drawer, stage and toast', () => {
+  assert.equal($('drawer').getAttribute('role'), 'dialog');
+  assert.equal($('drawer').getAttribute('aria-modal'), 'true');
+  assert.equal($('drawer').hasAttribute('inert'), true);
   ui.drawer(true);
   assert.ok($('drawer').classList.contains('open')); assert.ok($('scrim').classList.contains('open'));
   assert.equal($('drawer').getAttribute('aria-hidden'), 'false');
+  assert.equal($('drawer').hasAttribute('inert'), false);
   ui.drawer(false);
   assert.ok(!$('drawer').classList.contains('open')); assert.equal($('drawer').getAttribute('aria-hidden'), 'true');
+  assert.equal($('drawer').hasAttribute('inert'), true);
   ui.stage('live'); assert.equal(document.body.dataset.stage, 'live');
   ui.toast('Saved'); assert.equal($('toast').textContent, 'Saved'); assert.ok($('toast').classList.contains('on'));
 });
@@ -753,4 +763,129 @@ test('multimodal late fusion survives intermittent channel dropout (US 10,628,74
   } finally {
     globalThis.fetch = origFetch;
   }
+});
+
+test('P0/P1 regressions: Stroop outlier/repeat/abort, Breathe pattern accumulation, Voice ctx, XSS, CSV & labelling', async () => {
+  const { aggregateStroop, createStroopTest } = await import('../stroop.js');
+  const { createBreathingCoach } = await import('../breathe.js');
+  const { acousticFeatures, createVoiceMonitor } = await import('../voice.js');
+  const app = await import('../app.js');
+
+  // 1. Stroop retains all trials in count/accuracy/score while filtering RT outliers only for RT means
+  const agg = aggregateStroop([
+    { word: 'Red', colorName: 'Red', chosenName: 'Red', ok: true, rtMs: 600, isCongruent: true },
+    { word: 'Blue', colorName: 'Green', chosenName: 'Green', ok: true, rtMs: 700, isCongruent: false },
+    { word: 'Red', colorName: 'Blue', chosenName: 'Blue', ok: true, rtMs: 4200, isCongruent: false },
+    { word: 'Green', colorName: 'Yellow', chosenName: 'Green', ok: false, rtMs: 4500, isCongruent: false }
+  ]);
+  assert.equal(agg.trials, 4);
+  assert.equal(agg.correct, 3);
+  assert.equal(agg.accuracy, 75);
+  assert.equal(agg.meanRtMs, 650);
+
+  // Stroop ignores key repeat and marks aborted stop
+  let finishMeta = null;
+  const st = createStroopTest({ durationS: 10, onFinish: (_, meta) => { finishMeta = meta; } });
+  st.start();
+  assert.equal(st.handleKey({ key: '1', repeat: true }), null);
+  assert.equal(st.getResults().length, 0);
+  st.stop(true);
+  assert.deepEqual(finishMeta, { aborted: true });
+
+  // 2. Breathe preserves elapsed duration and completed cycles across mid-session pattern switch
+  const origNow = performance.now;
+  let fakeNow = 1000;
+  performance.now = () => fakeNow;
+  try {
+    const bc = createBreathingCoach({ patternKey: 'coherent' });
+    bc.start();
+    fakeNow += 14000; // 1.4 cycles of 10s coherent = 1 complete cycle, 14s
+    bc.setPattern('box');
+    fakeNow += 4000;  // +4s in box
+    const bSum = bc.stop();
+    assert.equal(bSum.durationS, 18);
+    assert.equal(bSum.cyclesCompleted, 1);
+  } finally {
+    performance.now = origNow;
+  }
+
+  // 3. Voice ignores NaN FFT bins and does not close caller-supplied AudioContext
+  const vf = acousticFeatures(new Float32Array([0.1, -0.1, 0.1, -0.1]), new Float32Array([-100, NaN, -40, -60]), 48000);
+  assert.ok(Number.isFinite(vf.centroid) && vf.centroid > 0);
+  let closeCalls = 0;
+  const fakeCtx = {
+    state: 'running',
+    sampleRate: 48000,
+    createMediaStreamSource: () => ({ connect() {}, disconnect() {} }),
+    createAnalyser: () => ({ fftSize: 1024, frequencyBinCount: 512, smoothingTimeConstant: 0.5, disconnect() {}, getFloatTimeDomainData() {}, getFloatFrequencyData() {} }),
+    close: async () => { closeCalls++; }
+  };
+  const origAC = globalThis.AudioContext;
+  globalThis.AudioContext = function () {};
+  try {
+    const vm = createVoiceMonitor({ getAudioTracks: () => [{}] }, () => {}, fakeCtx);
+    vm.stop();
+    assert.equal(closeCalls, 0, 'createVoiceMonitor must not close caller-owned AudioContext');
+  } finally {
+    globalThis.AudioContext = origAC;
+  }
+
+  // 4. ui.renderSummary HTML-escapes dynamic strings (no XSS) and openDialog guards re-opening
+  const xssLog = [{ t: 90, window_start_s: 80, window_end_s: 90, phase: 'recovery', transition: false, tension_idx: 0.1 }];
+  ui.renderSummary(
+    [{ phase: 'recovery', n: 1, basis: '<img src=x onerror=alert(1)>', tension: { mean: 0.1, peak: 0.2 }, hr: { mean: null, n: 0 }, report: null }],
+    [],
+    xssLog,
+    { breathe: { durationS: 30, cyclesCompleted: 2, patternName: '<script>evil()</script>' } }
+  );
+  assert.equal($('sumPhases').querySelectorAll('img').length, 0);
+  assert.equal($('sumBreathe').querySelectorAll('script').length, 0);
+  assert.match($('sumBreathe').textContent, /<script>evil\(\)<\/script>/);
+
+  const dlg = $('summary');
+  dlg.showModal = () => { if (dlg.open) throw new Error('InvalidStateError'); dlg.open = true; };
+  dlg.open = true;
+  assert.doesNotThrow(() => ui.openDialog(dlg));
+
+  // 5. csvCell formula injection guard, NaN safety & \r quoting; labelled() phase contiguity & latest baseline
+  assert.equal(app.csvCell('=CMD()', { isText: true }), "'=CMD()");
+  assert.equal(app.csvCell('+1+1', { isText: true }), "'+1+1");
+  assert.equal(app.csvCell(NaN), '');
+  assert.equal(app.csvCell('a\rb'), '"a\rb"');
+
+  const logRows = [
+    { t: 110, window_start_s: 100, window_end_s: 110, phase: 'baseline', phase_start_s: 80, transition: false },
+    { t: 150, window_start_s: 140, window_end_s: 150, phase: 'stressor', phase_start_s: 120, transition: false },
+    { t: 200, window_start_s: 190, window_end_s: 200, phase: 'baseline', phase_start_s: 180, transition: false }
+  ];
+  const repRows = [
+    { t: 115, phase: 'baseline', raw_sattva: 7, raw_rajas: 2, raw_tamas: 1, raw_stress: 2, sattva: 0.7, rajas: 0.2, tamas: 0.1, stress_label: 0.2 },
+    { t: 205, phase: 'baseline', raw_sattva: 6, raw_rajas: 3, raw_tamas: 1, raw_stress: 4, sattva: 0.6, rajas: 0.3, tamas: 0.1, stress_label: 0.4 }
+  ];
+  const lab = app.labelled(logRows, repRows);
+  assert.equal(lab[0].baseline_raw_stress, 4, 'uses latest baseline report');
+  assert.equal(lab[0].report_t_s, 115, 'row 0 labelled by first baseline report, not across intervening stressor');
+
+  // 6. fittedTensionFrom rejects Infinity & loadModel excludes ./artifacts/models.json
+  assert.equal(app.fittedTensionFrom({
+    features: ['z_browLower', 'z_lidTight', 'z_lipTight', 'z_smile'],
+    coef_z: [0.1, 0.2, 0.1, -0.1], n_participants: Infinity, vs_phase: -0.01, pred_sd: 0.1
+  }), null);
+  const fetched = [];
+  const origFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async u => { fetched.push(u); return { ok: false }; };
+    await app.loadModel();
+    assert.ok(!fetched.includes('./artifacts/models.json'));
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+
+  // 7. Stop button remains visible during setup in CSS
+  const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(css, /body\[data-stage=setup\]\s*\.cam-actions/);
+  assert.match(css, /body\[data-stage=setup\]\s*#openSummary/);
+
+  // 8. Phase reminder duration select is not nested inside the switch label
+  assert.equal($('guidedSecs').closest('label'), null);
 });

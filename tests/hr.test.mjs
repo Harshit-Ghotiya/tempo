@@ -262,3 +262,51 @@ test('sub-ROI fusion tolerates one persistently occluded cheek and isolated drop
   const res = stats(run(trc), () => 68);
   assert.ok(res.valid >= 0.8 && res.mae < 4 && never(res, 10), JSON.stringify(res));
 });
+
+test('warm-light blue-noise fallback handles high blue sensor noise without DC transient failure', () => {
+  const trc = trace({ pulse: 0.5, noiseB: 0.025, red: 0.2, seed: 14 });
+  const res = stats(run(trc), () => 60);
+  assert.ok(res.valid >= 0.9 && res.mae < 2.5 && never(res, 8), JSON.stringify(res));
+});
+
+test('sub-ROI fusion handles distinct ROI brightness with dropped frames without pooled-mean contamination', () => {
+  const makeRoi = (base, seed, art = null) => trace({ hr: () => 68, pulse: 0.6, seed, art }).map(f => ({
+    t: f.t,
+    rgb: [f.r * (base[0] / 180), f.g * (base[1] / 120), f.b * (base[2] / 100)]
+  }));
+  const fh = makeRoi([200, 155, 130], 61, [0.85, 2.5]);
+  const lc = makeRoi([150, 105, 85], 62);
+  const rc = makeRoi([115, 78, 60], 63);
+  const len = Math.min(fh.length, lc.length, rc.length);
+  const trc = Array.from({ length: len }, (_, i) => ({
+    t: fh[i].t,
+    r: (fh[i].rgb[0] + lc[i].rgb[0] + rc[i].rgb[0]) / 3,
+    g: (fh[i].rgb[1] + lc[i].rgb[1] + rc[i].rgb[1]) / 3,
+    b: (fh[i].rgb[2] + lc[i].rgb[2] + rc[i].rgb[2]) / 3,
+    sub: [fh[i].rgb, i % 15 === 0 ? null : lc[i].rgb, i % 19 === 0 ? null : rc[i].rgb]
+  }));
+  const res = stats(run(trc), () => 68);
+  assert.ok(res.valid >= 0.9 && res.mae < 1.5 && never(res, 5), JSON.stringify(res));
+});
+
+test('resample guards empty input and tracker resets stale HRV across lock loss or null RMSSD', () => {
+  assert.deepEqual(resample([]), { R: [], G: [], B: [], n: 0, SUB: null, MX: null, MY: null });
+
+  const tracker = createTracker();
+  const clean = trace({ secs: 15, hr: () => 68, noise: 0.0005, seed: 81 });
+  const e1 = tracker.update(clean, 15e3);
+  assert.ok(e1.valid && Number.isFinite(e1.hrv), 'initial lock computes valid HRV');
+
+  // After a >40 s lock timeout, an unmeasurable RMSSD window (heavily irregular synthetic beats) must NOT leak stale HRV
+  const irregular = clean.map((f, idx) => {
+    const s = f.t / 1e3;
+    // Inject alternating premature beat amplitude modulation so spectral HR still tracks ~68 bpm while RMSSD drops < 4 IBIs
+    const jitter = idx % 30 === 0 ? 0.02 * f.g : 0;
+    return { t: f.t + 60e3, r: f.r, g: f.g + jitter, b: f.b };
+  });
+  const e2 = tracker.update(irregular.slice(0, 8 * 30 + 5), 68.2e3);
+  assert.ok(e2.valid, 'short 8s lock remains valid');
+  if (e2.hrv !== null) {
+    assert.notEqual(e2.hrv, e1.hrv, 'must not carry forward stale HRV from expired previous lock');
+  }
+});

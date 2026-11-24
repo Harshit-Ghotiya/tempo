@@ -80,6 +80,8 @@ export function createBreathingCoach({
   let active = false;
   let currentPattern = patternKey;
   let startTime = 0;
+  let accElapsedS = 0;
+  let accCycles = 0;
   let lastStepIndex = -1;
   let timerId = null;
 
@@ -89,6 +91,7 @@ export function createBreathingCoach({
     const elapsedS = (now - startTime) / 1e3;
     const info = phaseAt(currentPattern, elapsedS);
     if (!info) return;
+    info.cycle += accCycles;
 
     if (info.stepIndex !== lastStepIndex) {
       lastStepIndex = info.stepIndex;
@@ -104,6 +107,8 @@ export function createBreathingCoach({
       }
       active = true;
       startTime = performance.now();
+      accElapsedS = 0;
+      accCycles = 0;
       lastStepIndex = -1;
       update();
       if (timerId) clearInterval(timerId);
@@ -113,12 +118,15 @@ export function createBreathingCoach({
 
     setPattern(key) {
       if (BREATHE_PATTERNS[key]) {
+        if (active) {
+          const segElapsedS = Math.max(0, (performance.now() - startTime) / 1e3);
+          accElapsedS += segElapsedS;
+          accCycles += Math.floor(segElapsedS / getPatternCycleS(currentPattern));
+          startTime = performance.now();
+        }
         currentPattern = key;
         lastStepIndex = -1;
-        if (active) {
-          startTime = performance.now();
-          update();
-        }
+        if (active) update();
       }
     },
 
@@ -133,8 +141,9 @@ export function createBreathingCoach({
         clearInterval(timerId);
         timerId = null;
       }
-      const totalElapsedS = Math.max(0, (performance.now() - startTime) / 1e3);
-      const cycles = Math.floor(totalElapsedS / getPatternCycleS(currentPattern));
+      const segElapsedS = Math.max(0, (performance.now() - startTime) / 1e3);
+      const totalElapsedS = accElapsedS + segElapsedS;
+      const cycles = accCycles + Math.floor(segElapsedS / getPatternCycleS(currentPattern));
       const summary = {
         patternKey: currentPattern,
         patternName: BREATHE_PATTERNS[currentPattern]?.name || currentPattern,

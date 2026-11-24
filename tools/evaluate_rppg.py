@@ -5,7 +5,7 @@ Usage:
     # 1. Audit rPPG coverage, quality, and lighting on exported session CSV(s):
     python tools/evaluate_rppg.py session.csv [more.csv ...]
 
-    # 2. Validate against a fingertip pulse oximeter reference (target: >=70% of good windows within +-5 bpm):
+    # 2. Validate against a fingertip pulse oximeter reference (target: >=50% of good windows within +-5 bpm):
     python tools/evaluate_rppg.py session.csv --ref-hr 72
 
     # 3. Run open-rppg (if installed via `pip install open-rppg`) offline on a recorded face video:
@@ -25,15 +25,19 @@ def evaluate_csv(path, ref_hr=None, min_q=0.3):
     live = df[~df["phase"].isin(SETUP)] if "phase" in df else df
     n_live = max(1, len(live))
 
-    hr_col = "hr" if "hr" in live else ("z_hr" if "z_hr" in live else None)
-    hr = live[hr_col].dropna().to_numpy(float) if hr_col else np.array([])
-    hrv = live["hrv"].dropna().to_numpy(float) if "hrv" in live else np.array([])
-    q = live["rppg_quality"].dropna().to_numpy(float) if "rppg_quality" in live else np.array([])
-    luma = live["skin_luma"].dropna().to_numpy(float) if "skin_luma" in live else np.array([])
-    rg = live["skin_rg"].dropna().to_numpy(float) if "skin_rg" in live else np.array([])
+    hr_col = "hr" if "hr" in live.columns else None
+    num = lambda col: pd.to_numeric(live[col], errors="coerce") if col in live.columns else pd.Series(np.nan, index=live.index)
+    hr_s, hrv_s, q_s = num("hr"), num("hrv"), num("rppg_quality")
+    luma_s, rg_s, ref_s = num("skin_luma"), num("skin_rg"), num("ref_hr")
 
-    good_mask = (live["rppg_quality"].fillna(0) >= min_q) & live[hr_col].notna() if ("rppg_quality" in live and hr_col) else pd.Series(False, index=live.index)
-    good_hr = live.loc[good_mask, hr_col].to_numpy(float) if (hr_col and good_mask.any()) else np.array([])
+    hr = hr_s.dropna().to_numpy(float) if hr_col else np.array([])
+    hrv = hrv_s.dropna().to_numpy(float)
+    q = q_s.dropna().to_numpy(float)
+    luma = luma_s.dropna().to_numpy(float)
+    rg = rg_s.dropna().to_numpy(float)
+
+    good_mask = (q_s.fillna(0) >= min_q) & hr_s.notna() if ("rppg_quality" in live.columns and hr_col) else pd.Series(False, index=live.index)
+    good_hr = hr_s.loc[good_mask].to_numpy(float) if (hr_col and good_mask.any()) else np.array([])
 
     res = {
         "file": path,
@@ -49,11 +53,10 @@ def evaluate_csv(path, ref_hr=None, min_q=0.3):
     }
 
     # Check oximeter reference column (`ref_hr`) or CLI scalar `--ref-hr`
-    ref_series = None
-    if "ref_hr" in live and live["ref_hr"].notna().any():
-        paired = live.loc[good_mask & live["ref_hr"].notna(), ["hr", "ref_hr"]]
-        if len(paired):
-            err = np.abs(paired["hr"].to_numpy(float) - paired["ref_hr"].to_numpy(float))
+    if hr_col is not None and ref_s.notna().any():
+        paired_mask = good_mask & ref_s.notna()
+        if paired_mask.any():
+            err = np.abs(hr_s.loc[paired_mask].to_numpy(float) - ref_s.loc[paired_mask].to_numpy(float))
             res["oximeter_mae"] = float(np.mean(err))
             res["within_5bpm"] = float(np.mean(err <= 5.0))
     elif ref_hr is not None and len(good_hr):

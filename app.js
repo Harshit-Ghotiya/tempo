@@ -1,19 +1,19 @@
-// Tempo v0.8.0: on-device stress-signal portal and study data collection.
+// Tempo v0.8.5: on-device stress-signal portal and study data collection.
 // Privacy invariant: video and audio never leave the browser and are never recorded, stored, or uploaded.
 // Only derived numerical features are displayed or exported when the user clicks Export.
 
-import { createTracker, isSkin, createRoiStabilizer } from './hr.js?v=0.8.0';
-import { initAffect, evalAffect } from './affect.js?v=0.8.0';
-import { createVoiceMonitor } from './voice.js?v=0.8.0';
-import { createTrend, ema } from './chart.js?v=0.8.0';
-import { phaseStats, directionChecks } from './summary.js?v=0.8.0';
-import { createStroopTest, aggregateStroop } from './stroop.js?v=0.8.0';
-import { createBreathingCoach, BREATHE_PATTERNS } from './breathe.js?v=0.8.0';
+import { createTracker, isSkin, createRoiStabilizer } from './hr.js?v=0.8.5';
+import { initAffect, evalAffect } from './affect.js?v=0.8.5';
+import { createVoiceMonitor } from './voice.js?v=0.8.5';
+import { createTrend, ema } from './chart.js?v=0.8.5';
+import { phaseStats, directionChecks } from './summary.js?v=0.8.5';
+import { createStroopTest, aggregateStroop } from './stroop.js?v=0.8.5';
+import { createBreathingCoach, BREATHE_PATTERNS } from './breathe.js?v=0.8.5';
 import {
-  $, stage, toast, tweenNum, drawSpark, buildRows, setRow, setDot, ring,
+  $, stage, toast, tweenNum, buildRows, setRow, setDot, ring,
   initRate, resetRate, touched, drawer, initTheme, lightOf, lightTip,
   hrView, hrvShown, openDialog, closeDialog, setupDialogDismiss, renderSummary
-} from './ui.js?v=0.8.0';
+} from './ui.js?v=0.8.5';
 
 // ============================================================================
 // 1. CONFIGURATION, CONSTANTS & LITERATURE PRIORS
@@ -117,7 +117,7 @@ export function fittedTensionFrom(m) {
   const st = m?.stress_tension;
   if (!st || !Array.isArray(st.features) || !Array.isArray(st.coef_z) || st.features.length !== st.coef_z.length) return null;
   const n = Number(st.n_participants), gain = Number(st.vs_phase ?? st.vs_phase_mean), sdp = Number(st.pred_sd);
-  if (!(n >= FIT_MIN_N) || !(gain < 0) || !(sdp > 0)) return null;
+  if (!Number.isFinite(n) || n < FIT_MIN_N || !Number.isFinite(gain) || gain >= 0 || !Number.isFinite(sdp) || sdp <= 0) return null;
   const w = {};
   st.features.forEach((f, i) => {
     const k = String(f).replace(/^z_/, '');
@@ -296,10 +296,18 @@ let guidedPrompted = false;
 let latestStroop = null;
 let latestBreathe = null;
 let sharedAudioCtx = null;
+let voiceAudioCtx = null;
+let stoppedAt = null;
+let lastDetectMs = 0;
+let lastFrameErrAt = 0;
+let wasHidden = false;
+let modelKind = null;
+let lastTbArgs = null;
 
 const cv = document.createElement('canvas');
 let cx = null;
 const BASE_TITLE = document.title;
+const elapsedNow = () => (start ? ((stoppedAt ?? performance.now()) - start) / 1e3 : 0);
 
 // Hook for external or on-device voice model: setVoice({sattva, rajas, tamas}, quality0to1)
 window.setVoice = (p, q = 1) => {
@@ -337,12 +345,12 @@ function createClock(onBeat) {
 const clock = createClock(() => {
   if (!running) return;
   const now = performance.now();
-  if (document.hidden && now - lastBgFrame >= BG_FRAME_MS) {
+  if (document.hidden && (use?.face || use?.pulse || use?.pose) && now - lastBgFrame >= BG_FRAME_MS) {
     lastBgFrame = now;
     const v = $('cam');
     if (v.readyState >= 2 && v.currentTime !== lastT) {
       lastT = v.currentTime;
-      frame(v, now);
+      safeFrame(v, now);
     }
   }
   if (now - lastLiveAt >= LIVE_MS) {
@@ -359,10 +367,24 @@ const trend = createTrend($('trend'));
 buildRows('rowsFace', ROWS.face);
 buildRows('rowsPose', ROWS.pose);
 RATE.forEach(initRate);
+$('tb')?.closest?.('details')?.addEventListener?.('toggle', e => {
+  if (e.target.open && lastTbArgs) renderTable(lastTbArgs.x, lastTbArgs.z);
+});
 
 document.addEventListener('visibilitychange', () => {
-  if (running && !document.hidden) {
-    trend.render?.((performance.now() - start) / 1e3, 0.5);
+  if (!running) return;
+  const el = (performance.now() - start) / 1e3;
+  if (document.hidden) {
+    if (!document.pictureInPictureElement) {
+      wasHidden = true;
+      hiddenAt = el;
+    }
+  } else {
+    if (wasHidden) {
+      hiddenAt = el;
+      wasHidden = false;
+    }
+    trend.render?.(el, 0.5);
   }
 });
 
@@ -392,7 +414,27 @@ setInterval(ping, 5000).unref?.();
 // 4. MODEL LOADING, MULTIMODAL INFERENCE & FUSION
 // ============================================================================
 
-export async function loadModel(urls = ['./models.json', './artifacts/models.json', './preset_models.json']) {
+function syncModelNotes() {
+  const tnNote = $('tensionNote');
+  if (tnNote) {
+    tnNote.textContent = fitted
+      ? `Facial tension compared with your own baseline. Fitted stress_delta weights (LOPO N=${fitted.n}, experimental).`
+      : 'Facial tension compared with your own baseline. Experimental: the weights come from the literature and are not yet validated.';
+  }
+  const gnNote = $('gunaNote');
+  if (gnNote) {
+    const nPart = Number(trained?.meta?.n_participants);
+    gnNote.textContent = modelKind === 'trained' && Number.isFinite(nPart) && nPart > 0
+      ? `Trained model (N=${nPart}), experimental`
+      : modelKind === 'preset'
+        ? 'Preset demo weights (unfitted)'
+        : 'Demo priors, unvalidated';
+  }
+}
+
+export const modelSource = () => modelKind;
+
+export async function loadModel(urls = ['./models.json', './preset_models.json']) {
   for (const u of urls) {
     try {
       const r = await fetch(u, { cache: 'no-store' });
@@ -401,14 +443,19 @@ export async function loadModel(urls = ['./models.json', './artifacts/models.jso
       if (m?.models && typeof m.models === 'object' && Object.keys(m.models).length) {
         trained = m;
         fitted = fittedTensionFrom(m);
+        const nPart = Number(m?.meta?.n_participants);
+        modelKind = Number.isFinite(nPart) && nPart > 0 ? 'trained' : 'preset';
         $('guna').hidden = false;
+        syncModelNotes();
         return m;
       }
     } catch (e) {}
   }
   trained = null;
   fitted = null;
+  modelKind = null;
   $('guna').hidden = !DEMO_GUNA;
+  syncModelNotes();
   return null;
 }
 loadModel();
@@ -764,13 +811,13 @@ export function drawStressMesh(mcx, L, W, H, z = {}, usePulse = false) {
   mcx.fillStyle = 'rgba(15,23,42,0.65)';
   if (typeof mcx.roundRect === 'function') {
     mcx.beginPath();
-    mcx.roundRect(10, H - 26, tw + 16, 18, 9);
+    mcx.roundRect(10, H - 54, tw + 16, 18, 9);
     mcx.fill();
   } else {
-    mcx.fillRect(10, H - 26, tw + 16, 18);
+    mcx.fillRect(10, H - 54, tw + 16, 18);
   }
   mcx.fillStyle = hudColor;
-  if (mcx.fillText) mcx.fillText(hudText, 18, H - 13);
+  if (mcx.fillText) mcx.fillText(hudText, 18, H - 41);
   mcx.restore();
 }
 
@@ -780,95 +827,134 @@ export function drawStressMesh(mcx, L, W, H, z = {}, usePulse = false) {
 
 function loop() {
   if (!running) return;
+  rAFId = requestAnimationFrame(loop);
   const v = $('cam');
   const t = performance.now();
   if (v.readyState >= 2 && v.currentTime !== lastT) {
     lastT = v.currentTime;
-    frame(v, t);
+    safeFrame(v, t);
   }
-  rAFId = requestAnimationFrame(loop);
+}
+
+function safeFrame(v, t) {
+  try {
+    frame(v, t);
+  } catch (err) {
+    if (t - lastFrameErrAt > 5000) {
+      lastFrameErrAt = t;
+      console.warn('Tempo frame error:', err);
+    }
+  }
 }
 
 function frame(v, t) {
+  const tsMs = Math.max(lastDetectMs + 1, Math.floor(t));
+  lastDetectMs = tsMs;
+
   if (face) {
     const o = { t, ok: false };
-    const r = face.detectForVideo(v, t);
-    const L = r.faceLandmarks[0];
+    const r = face.detectForVideo(v, tsMs);
+    const L = r.faceLandmarks?.[0];
     const mcv = $('meshCv');
     const mcx = mcv?.getContext?.('2d');
 
     if (L) {
       o.ok = true;
       if (use.face) {
-        const bs = {};
-        r.faceBlendshapes[0].categories.forEach(c => { bs[c.categoryName] = c.score; });
-        const a = (x, y) => (bs[x] + bs[y]) / 2;
-        o.bl = a('eyeBlinkLeft', 'eyeBlinkRight');
-        o.bL = a('browDownLeft', 'browDownRight');
-        o.bR = (bs.browInnerUp + a('browOuterUpLeft', 'browOuterUpRight')) / 2;
-        o.lt = a('eyeSquintLeft', 'eyeSquintRight');
-        o.ew = a('eyeWideLeft', 'eyeWideRight');
-        o.lp = (bs.mouthPressLeft + bs.mouthPressRight + bs.mouthRollLower + bs.mouthRollUpper) / 4;
-        o.ld = a('mouthFrownLeft', 'mouthFrownRight');
-        o.sm = a('mouthSmileLeft', 'mouthSmileRight');
+        const cats = r.faceBlendshapes?.[0]?.categories;
+        if (cats?.length) {
+          const bs = {};
+          cats.forEach(c => { bs[c.categoryName] = c.score; });
+          const g = k => (Number.isFinite(bs[k]) ? bs[k] : 0);
+          const a = (x, y) => (g(x) + g(y)) / 2;
+          o.bl = a('eyeBlinkLeft', 'eyeBlinkRight');
+          o.bL = a('browDownLeft', 'browDownRight');
+          o.bR = (g('browInnerUp') + a('browOuterUpLeft', 'browOuterUpRight')) / 2;
+          o.lt = a('eyeSquintLeft', 'eyeSquintRight');
+          o.ew = a('eyeWideLeft', 'eyeWideRight');
+          o.lp = (g('mouthPressLeft') + g('mouthPressRight') + g('mouthRollLower') + g('mouthRollUpper')) / 4;
+          o.ld = a('mouthFrownLeft', 'mouthFrownRight');
+          o.sm = a('mouthSmileLeft', 'mouthSmileRight');
+        }
 
-        const p = L[468], q = L[473], open = o.bl < 0.4;
-        o.gx = open ? ((p.x - L[33].x) / (L[133].x - L[33].x) + (q.x - L[362].x) / (L[263].x - L[362].x)) / 2 : NaN;
-        o.gy = open ? ((p.y - L[159].y) / (L[145].y - L[159].y) + (q.y - L[386].y) / (L[374].y - L[386].y)) / 2 : NaN;
+        const p = L[468], q = L[473], open = (o.bl ?? 0) < 0.4;
+        if (open && p && q && L[33] && L[133] && L[362] && L[263] && L[159] && L[145] && L[386] && L[374]) {
+          const dxL = L[133].x - L[33].x, dxR = L[263].x - L[362].x;
+          const dyL = L[145].y - L[159].y, dyR = L[374].y - L[386].y;
+          o.gx = (Math.abs(dxL) > 1e-4 && Math.abs(dxR) > 1e-4)
+            ? ((p.x - L[33].x) / dxL + (q.x - L[362].x) / dxR) / 2
+            : NaN;
+          o.gy = (Math.abs(dyL) > 1e-4 && Math.abs(dyR) > 1e-4)
+            ? ((p.y - L[159].y) / dyL + (q.y - L[386].y) / dyR) / 2
+            : NaN;
+        } else {
+          o.gx = NaN;
+          o.gy = NaN;
+        }
 
-        const iod = Math.hypot(L[33].x - L[263].x, L[33].y - L[263].y);
-        o.nx = L[1].x / iod;
-        o.ny = L[1].y / iod;
-        const midEyeY = (L[33].y + L[263].y) / 2;
-        o.pitch = iod > 0 ? (L[1].y - midEyeY) / iod : 0;
+        const iod = (L[33] && L[263]) ? Math.hypot(L[33].x - L[263].x, L[33].y - L[263].y) : 0;
+        if (iod > 1e-6 && L[1]) {
+          o.nx = L[1].x / iod;
+          o.ny = L[1].y / iod;
+          const midEyeY = (L[33].y + L[263].y) / 2;
+          o.pitch = (L[1].y - midEyeY) / iod;
+        } else {
+          o.nx = NaN;
+          o.ny = NaN;
+          o.pitch = NaN;
+        }
       }
 
       if (use.pulse) {
         const W = v.videoWidth, H = v.videoHeight;
-        if (cv.width !== W) { cv.width = W; cv.height = H; }
-        cx ??= cv.getContext('2d', { willReadFrequently: true });
-        cx.drawImage(v, 0, 0);
-        const dt = rgb.length ? Math.max(0.01, (t - rgb[rgb.length - 1].t) / 1e3) : 1 / 30;
-        const rawRoi = [
-          L[151].x * W, L[151].y * H,
-          L[50].x * W, L[50].y * H,
-          L[280].x * W, L[280].y * H,
-          Math.abs(L[454].x - L[234].x) * W
-        ];
-        const [fx, fy, lx, ly, rx, ry, fw] = roiStab.update(rawRoi, dt);
-        const s = [0, 0, 0], fb = [0, 0, 0], sub = [];
-        let n = 0, nf = 0;
-        for (const [cx0, cy0, hx, hy] of [
-          [fx, fy, 0.12 * fw, 0.045 * fw],
-          [lx, ly, 0.08 * fw, 0.075 * fw],
-          [rx, ry, 0.08 * fw, 0.075 * fw]
-        ]) {
-          const x = Math.max(0, Math.round(cx0 - hx));
-          const y = Math.max(0, Math.round(cy0 - hy));
-          const w = Math.min(W - x, Math.round(2 * hx));
-          const h = Math.min(H - y, Math.round(2 * hy));
-          if (w < 2 || h < 2) { sub.push(null); continue; }
-          const d = cx.getImageData(x, y, w, h).data;
-          const ss = [0, 0, 0];
-          let ns = 0;
-          for (let i = 0; i < d.length; i += 4) {
-            const r = d[i], g = d[i + 1], b = d[i + 2];
-            if (isSkin(r, g, b)) { s[0] += r; s[1] += g; s[2] += b; n++; ss[0] += r; ss[1] += g; ss[2] += b; ns++; }
-            if (g > 25 && g < 245) { fb[0] += r; fb[1] += g; fb[2] += b; nf++; }
+        if (W > 0 && H > 0 && L[151] && L[50] && L[280] && L[454] && L[234]) {
+          if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+          cx ??= cv.getContext('2d', { willReadFrequently: true });
+          cx.drawImage(v, 0, 0);
+          const dt = rgb.length ? Math.max(0.01, (t - rgb[rgb.length - 1].t) / 1e3) : 1 / 30;
+          const rawRoi = [
+            L[151].x * W, L[151].y * H,
+            L[50].x * W, L[50].y * H,
+            L[280].x * W, L[280].y * H,
+            Math.abs(L[454].x - L[234].x) * W
+          ];
+          const [fx, fy, lx, ly, rx, ry, fw] = roiStab.update(rawRoi, dt);
+          const s = [0, 0, 0], fb = [0, 0, 0], sub = [];
+          let n = 0, nf = 0;
+          for (const [cx0, cy0, hx, hy] of [
+            [fx, fy, 0.12 * fw, 0.045 * fw],
+            [lx, ly, 0.08 * fw, 0.075 * fw],
+            [rx, ry, 0.08 * fw, 0.075 * fw]
+          ]) {
+            const x = Math.max(0, Math.round(cx0 - hx));
+            const y = Math.max(0, Math.round(cy0 - hy));
+            const w = Math.min(W - x, Math.round(2 * hx));
+            const h = Math.min(H - y, Math.round(2 * hy));
+            if (w < 2 || h < 2) { sub.push(null); continue; }
+            const d = cx.getImageData(x, y, w, h).data;
+            const ss = [0, 0, 0];
+            let ns = 0;
+            for (let i = 0; i < d.length; i += 4) {
+              const r = d[i], g = d[i + 1], b = d[i + 2];
+              if (isSkin(r, g, b)) { s[0] += r; s[1] += g; s[2] += b; n++; ss[0] += r; ss[1] += g; ss[2] += b; ns++; }
+              if (g > 25 && g < 245) { fb[0] += r; fb[1] += g; fb[2] += b; nf++; }
+            }
+            // Per-sub-ROI skin means (forehead, left cheek, right cheek) let hr.js down-weight a region corrupted by expression
+            sub.push(ns >= 8 ? [ss[0] / ns, ss[1] / ns, ss[2] / ns] : null);
           }
-          // Per-sub-ROI skin means (forehead, left cheek, right cheek) let hr.js down-weight a region corrupted by expression
-          sub.push(ns >= 8 ? [ss[0] / ns, ss[1] / ns, ss[2] / ns] : null);
+          // Raw (unstabilised) forehead position in face widths: hr.js treats large 1 s excursions as motion and abstains
+          const mx = rawRoi[0] / (rawRoi[6] || 1), my = rawRoi[1] / (rawRoi[6] || 1);
+          if (n >= 20) rgb.push(sub.filter(Boolean).length >= 2 ? { t, r: s[0] / n, g: s[1] / n, b: s[2] / n, mx, my, sub } : { t, r: s[0] / n, g: s[1] / n, b: s[2] / n, mx, my });
+          else if (nf) rgb.push({ t, r: fb[0] / nf, g: fb[1] / nf, b: fb[2] / nf, mx, my });
         }
-        // Raw (unstabilised) forehead position in face widths: hr.js treats large 1 s excursions as motion and abstains
-        const mx = rawRoi[0] / (rawRoi[6] || 1), my = rawRoi[1] / (rawRoi[6] || 1);
-        if (n >= 20) rgb.push(sub.filter(Boolean).length >= 2 ? { t, r: s[0] / n, g: s[1] / n, b: s[2] / n, mx, my, sub } : { t, r: s[0] / n, g: s[1] / n, b: s[2] / n, mx, my });
-        else if (nf) rgb.push({ t, r: fb[0] / nf, g: fb[1] / nf, b: fb[2] / nf, mx, my });
       }
 
       if (mcx && $('uMesh')?.checked) {
         const W = v.videoWidth, H = v.videoHeight;
-        if (mcv.width !== W || mcv.height !== H) { mcv.width = W; mcv.height = H; }
-        drawStressMesh(mcx, L, W, H, zSmooth, use.pulse);
+        if (W > 0 && H > 0) {
+          if (mcv.width !== W || mcv.height !== H) { mcv.width = W; mcv.height = H; }
+          drawStressMesh(mcx, L, W, H, zSmooth, use.pulse);
+        }
       } else if (mcx && mcv.width) {
         mcx.clearRect(0, 0, mcv.width, mcv.height);
       }
@@ -883,8 +969,8 @@ function frame(v, t) {
 
   if (pose && fc++ % POSE_EVERY === 0) {
     const o = { t, ok: false };
-    const L = pose.detectForVideo(v, t).landmarks[0];
-    if (L) {
+    const L = pose.detectForVideo(v, tsMs).landmarks?.[0];
+    if (L && L[11] && L[12] && L[7] && L[8] && (L[11].visibility ?? 0) > 0.5 && (L[12].visibility ?? 0) > 0.5) {
       const sw = Math.abs(L[11].x - L[12].x);
       if (sw > 0.05) {
         o.ok = true;
@@ -893,13 +979,14 @@ function frame(v, t) {
         o.sy = (L[11].y + L[12].y) / 2 / sw;
         const cur = {};
         for (const i of [15, 16]) {
-          if ((L[i].visibility ?? 0) > 0.5) cur[i] = L[i];
+          if (L[i] && (L[i].visibility ?? 0) > 0.5) cur[i] = L[i];
         }
-        if (pw) {
+        const dtP = pw ? (t - pw.t) / 1e3 : 0;
+        if (pw && dtP > 0) {
           const d = [];
           for (const i in cur) {
             if (pw.p[i]) {
-              d.push(Math.hypot(cur[i].x - pw.p[i].x, cur[i].y - pw.p[i].y) / sw / ((t - pw.t) / 1e3));
+              d.push(Math.hypot(cur[i].x - pw.p[i].x, cur[i].y - pw.p[i].y) / sw / dtP);
             }
           }
           if (d.length) o.wv = mean(d);
@@ -924,7 +1011,7 @@ function feats(winS = WIN_S, { pulse = true } = {}) {
 
   if (use.face && Fo.length > Math.max(20, 6 * winS)) {
     q.face = Fo.length / F.length;
-    const B = fbuf.filter(o => o.ok && o.bl !== undefined);
+    const B = fbuf.filter(o => o.ok && Number.isFinite(o.bl));
     const span = B.length ? (B[B.length - 1].t - B[0].t) / 6e4 : 0;
     if (span > 8 / 60) {
       let c = 0, s = 0;
@@ -934,23 +1021,34 @@ function feats(winS = WIN_S, { pulse = true } = {}) {
       }
       x.blink = c / span;
     }
-    for (const [k, f] of AU) x[k] = mean(Fo.map(o => o[f]));
-    x.expressivity = mean(AU.map(([, f]) => sd(Fo.map(o => o[f]))));
-    x.perclos = mean(Fo.map(o => +(o.bl > 0.8)));
-    x.gaze = Math.hypot(sd(fin(Fo.map(o => o.gx))), sd(fin(Fo.map(o => o.gy))));
-    x.headMove = Math.hypot(sd(Fo.map(o => o.nx)), sd(Fo.map(o => o.ny)));
+    for (const [k, f] of AU) {
+      const vals = fin(Fo.map(o => o[f]));
+      if (vals.length) x[k] = mean(vals);
+    }
+    const exps = fin(AU.map(([, f]) => {
+      const vals = fin(Fo.map(o => o[f]));
+      return vals.length ? sd(vals) : NaN;
+    }));
+    if (exps.length) x.expressivity = mean(exps);
+    const bls = fin(Fo.map(o => o.bl));
+    if (bls.length) x.perclos = mean(bls.map(v => +(v > 0.8)));
+    const gx = fin(Fo.map(o => o.gx)), gy = fin(Fo.map(o => o.gy));
+    if (gx.length > 1 || gy.length > 1) x.gaze = Math.hypot(gx.length > 1 ? sd(gx) : 0, gy.length > 1 ? sd(gy) : 0);
+    const nx = fin(Fo.map(o => o.nx)), ny = fin(Fo.map(o => o.ny));
+    if (nx.length > 1 && ny.length > 1) x.headMove = Math.hypot(sd(nx), sd(ny));
     const ps = fin(Fo.map(o => o.pitch));
     if (ps.length) x.pitch = mean(ps);
-    const gys = fin(Fo.map(o => o.gy));
-    if (gys.length) x.gy = mean(gys);
+    if (gy.length) x.gy = mean(gy);
   }
 
   const P = pbuf.filter(o => o.t > now - winS * 1e3);
   const Po = P.filter(o => o.ok);
   if (use.pose && Po.length > Math.max(6, 1.5 * winS)) {
     q.pose = Po.length / P.length;
-    x.shrug = -mean(Po.map(o => o.el));
-    x.sway = Math.hypot(sd(Po.map(o => o.sx)), sd(Po.map(o => o.sy)));
+    const elv = fin(Po.map(o => o.el));
+    if (elv.length) x.shrug = -mean(elv);
+    const sx = fin(Po.map(o => o.sx)), sy = fin(Po.map(o => o.sy));
+    if (sx.length > 1 && sy.length > 1) x.sway = Math.hypot(sd(sx), sd(sy));
     const w = fin(Po.map(o => o.wv));
     if (w.length) x.fidget = mean(w);
   }
@@ -1002,9 +1100,9 @@ function liveTick() {
   if (el < CAL_END) {
     if (el >= SETTLE_S + FAST_WIN_S) {
       for (const k in x) {
-        if ((FEAT[k] === 'face' || FEAT[k] === 'pose') && (q[FEAT[k]] ?? 0) > MIN_Q) {
+        if ((FEAT[k] === 'face' || FEAT[k] === 'pose') && (q[FEAT[k]] ?? 0) >= MIN_Q) {
           (calFast[k] ??= []).push(x[k]);
-        } else if ((k === 'pitch' || k === 'gy') && (q.face ?? 0) > MIN_Q) {
+        } else if ((k === 'pitch' || k === 'gy') && (q.face ?? 0) >= MIN_Q) {
           (calFast[k] ??= []).push(x[k]);
         }
       }
@@ -1037,6 +1135,15 @@ function liveTick() {
   }
 }
 
+function renderTable(x, z) {
+  const tb = $('tb');
+  const det = tb?.closest?.('details');
+  if (!tb || (det && !det.open)) return;
+  tb.innerHTML = Object.keys(FEAT)
+    .map(k => `<tr><td>${k}</td><td>${x[k] == null ? '–' : x[k].toFixed(2)}</td><td>${z[k] == null ? '–' : z[k].toFixed(1)}</td></tr>`)
+    .join('');
+}
+
 function show(x, z, q, el, all, ag, tn, af, status) {
   $('idxHead').classList.toggle('on', fast !== null || tn !== null);
   const pe = $('idxPulse');
@@ -1051,7 +1158,7 @@ function show(x, z, q, el, all, ag, tn, af, status) {
     tweenNum($('hrNum'), view.v);
 
     const hrvV = hrvShown(x.hrv, q.rppg);
-    if (hrvV != null) lastHrv = { v: x.hrv, t: el };
+    if (hrvV != null) lastHrv = { v: hrvV, t: el };
     const hrvView = hrView(lastHrv, el);
     tweenNum($('hrvNum'), hrvView.v);
 
@@ -1077,9 +1184,8 @@ function show(x, z, q, el, all, ag, tn, af, status) {
 
   $('win').textContent = status;
   $('win').dataset.ok = status === 'clean window' ? '1' : '0';
-  $('tb').innerHTML = Object.keys(FEAT)
-    .map(k => `<tr><td>${k}</td><td>${x[k] == null ? '–' : x[k].toFixed(2)}</td><td>${z[k] == null ? '–' : z[k].toFixed(1)}</td></tr>`)
-    .join('');
+  lastTbArgs = { x, z };
+  renderTable(x, z);
 
   $('v_valence').textContent = af ? af.valence.toFixed(2) : '–';
   $('v_arousal').textContent = af ? af.arousal.toFixed(2) : '–';
@@ -1135,9 +1241,10 @@ function setup(el, x, q, tip = null) {
     ? 'Sit comfortably and face the screen.'
     : "Stay still and breathe normally. This becomes your personal baseline. If the pulse doesn't lock during setup, stay in Baseline a little longer under better light.";
 
-  const p = presence();
+  const needFace = !!(use.face || use.pulse);
+  const p = needFace ? presence() : null;
   const still = x.headMove == null ? null : x.headMove < 0.35 ? 1 : x.headMove < 0.6 ? 0.45 : 0;
-  row('cFace', true, p, p >= 0.9 ? 'Face in frame' : 'Move into the frame and face the screen');
+  row('cFace', needFace, p, p >= 0.9 ? 'Face in frame' : 'Move into the frame and face the screen');
   row('cPulse', use.pulse, q.rppg, tip ?? (q.rppg >= MIN_Q ? 'Pulse signal found' : 'Looking for a pulse: light your face evenly and hold still'));
   row('cPose', use.pose, q.pose, q.pose >= 0.6 ? 'Shoulders in frame' : 'Sit back so your shoulders are in view');
   row('cStill', use.face && still !== null, still, still === 1 ? 'Holding still' : 'Try to hold still');
@@ -1149,14 +1256,21 @@ function nudge(on) {
 }
 
 function tick() {
-  const el = (performance.now() - start) / 1e3;
+  const nowMs = performance.now();
+  const el = (nowMs - start) / 1e3;
   const { x, q } = feats();
   const pre = el < CAL_END;
   const phase = el < SETTLE_S ? 'settle' : pre ? 'calibration' : phaseNow();
 
-  const f2s = fbuf.filter(o => o.t > performance.now() - 2000).length;
-  const fps = f2s / 2;
-  if (!pre && fps < MIN_FPS) hiddenAt = el;
+  const needVideo = !!(use.face || use.pulse || use.pose);
+  const f2s = fbuf.filter(o => o.t > nowMs - 2000).length;
+  const p2s = pbuf.filter(o => o.t > nowMs - 2000).length;
+  const fps = (use.face || use.pulse)
+    ? f2s / 2
+    : use.pose
+      ? (p2s / 2) * POSE_EVERY
+      : 0;
+  if (!pre && needVideo && fps < MIN_FPS) hiddenAt = el;
 
   const ws = Math.max(0, el - WIN_S);
   const fs0 = el - LOOKBACK_S;
@@ -1165,7 +1279,7 @@ function tick() {
   let z = {}, ps = {}, all = null, ag = null, tn = null, af = null, light = null, tip = null, downLook = 0;
 
   if (use.pulse) {
-    light = lightOf(rgb, performance.now());
+    light = lightOf(rgb, nowMs);
     tip = lightTip(light);
     const tipEl = $('lightTip');
     if (tipEl) {
@@ -1177,8 +1291,8 @@ function tick() {
   if (pre) {
     if (el >= SETTLE_S + WIN_S) {
       for (const k in x) {
-        if (FEAT[k] && (q[FEAT[k]] ?? 0) > MIN_Q) (cal[k] ??= []).push(x[k]);
-        else if ((k === 'pitch' || k === 'gy') && (q.face ?? 0) > MIN_Q) (cal[k] ??= []).push(x[k]);
+        if (FEAT[k] && (q[FEAT[k]] ?? 0) >= MIN_Q) (cal[k] ??= []).push(x[k]);
+        else if ((k === 'pitch' || k === 'gy') && (q.face ?? 0) >= MIN_Q) (cal[k] ??= []).push(x[k]);
       }
     }
     setup(el, x, q, tip);
@@ -1192,7 +1306,7 @@ function tick() {
 
     // Late HR baseline acquisition if initial setup missed pulse lock
     if (use.pulse && base && !base.hr && !hrLate && phase === 'baseline' && inside) {
-      if (x.hr != null && (q.rppg ?? 0) > MIN_Q) {
+      if (x.hr != null && (q.rppg ?? 0) >= MIN_Q) {
         (calLate.hr ??= []).push(x.hr);
         if (x.hrv != null) (calLate.hrv ??= []).push(x.hrv);
         if (calLate.hr.length >= MIN_CAL_RPPG) {
@@ -1224,7 +1338,7 @@ function tick() {
     if (DEMO_GUNA || trained) {
       for (const m of ['face', 'rppg', 'pose']) {
         const p = modP(m, z, x);
-        if (p && q[m] > MIN_Q) ps[m] = { p, q: q[m] };
+        if (p && (q[m] ?? 0) >= MIN_Q) ps[m] = { p, q: q[m] };
       }
       const vis = fuse(ps);
       const vo = voice && performance.now() - voice.t < 15e3 ? voice : null;
@@ -1256,7 +1370,7 @@ function tick() {
   }
 
   const fpsEl = $('fpsNum');
-  if (fpsEl) fpsEl.textContent = Math.round(fps) || '–';
+  if (fpsEl) fpsEl.textContent = needVideo ? (Math.round(fps) || '–') : 'audio';
 
   const winStatus = pre
     ? 'setting up'
@@ -1290,7 +1404,7 @@ function tick() {
     stroop_active: stroopTest?.isActive?.() ? 1 : 0,
     breathe_active: breatheCoach?.isActive?.() ? 1 : 0,
     down_look: +downLook.toFixed(2),
-    fps: +fps.toFixed(1),
+    fps: needVideo ? +fps.toFixed(1) : '',
     tab_hidden: document.hidden,
     ...x,
     ...Object.fromEntries(Object.entries(z).map(([k, v]) => ['z_' + k, v])),
@@ -1321,12 +1435,13 @@ function syncPhaseButtons(ph = phaseNow()) {
 
 $('phaseSeg').addEventListener('change', () => {
   const ph = phaseNow();
+  syncPhaseButtons(ph);
+  if (!running) return;
   phaseStart = Math.max(CAL_END, (performance.now() - start) / 1e3);
   $('reportPhase').textContent = PHASE[ph];
   trend.mark(phaseStart, ph);
   guidedPrompted = false;
   nudge(false);
-  syncPhaseButtons(ph);
   toast(`Phase: ${PHASE[ph]}. Check in at its end, before you switch.`);
 });
 
@@ -1351,7 +1466,7 @@ $('saveReport').onclick = () => {
     $('reportMsg').textContent = 'Calm, restless and dull cannot all be zero.';
     return;
   }
-  const tt = (performance.now() - start) / 1e3;
+  const tt = elapsedNow();
   const phase = phaseNow();
   if (tt < CAL_END) {
     $('reportMsg').textContent = 'Wait until setup has finished.';
@@ -1378,7 +1493,7 @@ $('saveReport').onclick = () => {
 };
 
 const showSummary = () => {
-  const dur = start ? (performance.now() - start) / 1e3 : 0;
+  const dur = elapsedNow();
   const stats = phaseStats(log, reports);
   const checks = directionChecks(stats);
   renderSummary(stats, checks, log, {
@@ -1463,7 +1578,8 @@ export const stroopTest = createStroopTest({
     const fill = $('stroopProgressFill');
     if (fill) fill.style.width = `${Math.max(0, Math.min(100, (remainingS / totalS) * 100))}%`;
   },
-  onFinish(summary) {
+  onFinish(summary, meta) {
+    if (meta?.aborted) return;
     if (summary.trials > 0 || !latestStroop) {
       latestStroop = summary;
     }
@@ -1529,12 +1645,14 @@ document.addEventListener('keydown', e => {
 });
 
 setupDialogDismiss($('stroopModal'));
-$('stroopModal')?.addEventListener('close', () => stroopTest.stop());
+$('stroopModal')?.addEventListener('close', () => {
+  if (stroopTest.isActive()) stroopTest.stop(true);
+});
 
 const stroopClose = $('stroopClose');
 if (stroopClose) {
   stroopClose.onclick = () => {
-    stroopTest.stop();
+    stroopTest.stop(true);
     closeDialog($('stroopModal'));
   };
 }
@@ -1724,9 +1842,19 @@ $('go').onclick = async () => {
     return;
   }
 
+  if (vmon) { vmon.stop(); vmon = null; }
+  if (voiceAudioCtx) {
+    try { voiceAudioCtx.close().catch(() => {}); } catch (err) {}
+    voiceAudioCtx = null;
+  }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+  const needVideo = !!(use.face || use.pulse || use.pose);
   goBtn.disabled = true;
   goBtn.textContent = 'Starting...';
-  $('msg').textContent = 'Starting the camera and loading models. The very first run downloads two small model files, which can take a minute.';
+  $('msg').textContent = needVideo
+    ? 'Starting the camera and loading models. The very first run downloads two small model files, which can take a minute.'
+    : 'Starting microphone monitoring...';
 
   let userAudioCtx = null;
   try {
@@ -1742,21 +1870,27 @@ $('go').onclick = async () => {
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 640, height: 480, frameRate: 30 },
+      video: needVideo ? { width: 640, height: 480, frameRate: 30 } : false,
       audio: use.voice
     });
     const v = $('cam');
-    v.srcObject = stream;
-    await v.play();
+    if (needVideo) {
+      v.srcObject = stream;
+      await v.play();
+    } else {
+      v.srcObject = null;
+    }
     await init();
   } catch (e) {
-    $('msg').textContent = 'Could not start: ' + e.message + '. Allow camera access in the browser. If this is the first run, connect to the internet once so the models can download.';
-    goBtn.disabled = false;
+    $('msg').textContent = 'Could not start: ' + e.message + '. Allow camera/microphone access in the browser. If this is the first run, connect to the internet once so the models can download.';
     goBtn.textContent = 'Start setup';
+    chk();
     if (userAudioCtx) {
       try { userAudioCtx.close().catch(() => {}); } catch (err) {}
     }
-    if (stream) stream.getTracks().forEach(t => t.stop());
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    $('cam').srcObject = null;
+    delete document.body.dataset.video;
     return;
   }
 
@@ -1776,9 +1910,13 @@ $('go').onclick = async () => {
   base = null;
   pw = null;
   hiddenAt = -1;
+  wasHidden = false;
   lastT = -1;
+  lastDetectMs = 0;
+  stoppedAt = null;
   fc = 0;
   voice = null;
+  lastTbArgs = null;
 
   calFast = {};
   baseFast = null;
@@ -1798,8 +1936,8 @@ $('go').onclick = async () => {
   latestBreathe = null;
   syncPhaseButtons('baseline');
 
-  if (vmon) vmon.stop();
-  vmon = use.voice ? createVoiceMonitor(stream, (p, q) => window.setVoice(p, q), userAudioCtx) : null;
+  voiceAudioCtx = userAudioCtx;
+  vmon = use.voice ? createVoiceMonitor(stream, (p, q) => window.setVoice(p, q), voiceAudioCtx) : null;
 
   reports = [];
   tensionS = null;
@@ -1822,18 +1960,21 @@ $('go').onclick = async () => {
   document.querySelector('input[name=phase][value=baseline]').checked = true;
   $('reportPhase').textContent = 'Baseline';
   $('who').textContent = `${participantId} (${sessionId})`;
-  $('cam').classList.add('on');
+  document.body.dataset.video = needVideo ? '1' : '0';
+  $('cam').classList.toggle('on', needVideo);
   stage('setup');
   goBtn.textContent = 'Start setup';
   start = performance.now();
   running = true;
   lastTickAt = lastLiveAt = lastBgFrame = start;
-  loop();
+  if (needVideo) loop();
   clock.start();
 };
 
 $('stop').onclick = () => {
+  const wasSetup = document.body.dataset.stage === 'setup' && !log.some(r => !['settle', 'calibration'].includes(r.phase));
   running = false;
+  stoppedAt = performance.now();
   clock.stop();
   if (rAFId) {
     cancelAnimationFrame(rAFId);
@@ -1841,39 +1982,72 @@ $('stop').onclick = () => {
   }
   trend.stop();
   nudge(false);
-  stroopTest?.stop?.();
+  if (stroopTest?.isActive?.()) stroopTest.stop(true);
   breatheCoach?.stop?.();
   $('btnStroop')?.classList.remove('active-hint');
   $('btnBreathe')?.classList.remove('active-hint');
 
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (vmon) { vmon.stop(); vmon = null; }
+  if (voiceAudioCtx) {
+    try { voiceAudioCtx.close().catch(() => {}); } catch (err) {}
+    voiceAudioCtx = null;
+  }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
 
   const mcv = $('meshCv');
   mcv?.getContext?.('2d')?.clearRect(0, 0, mcv.width || 640, mcv.height || 480);
   $('cam').srcObject = null;
   $('cam').classList.remove('on');
-  $('st').textContent = 'Camera stopped. Export your data, or reload the page to start again.';
+  delete document.body.dataset.video;
+
+  if (wasSetup) {
+    $('msg').textContent = 'Setup stopped. You can change options or start again.';
+    $('st').textContent = '';
+    stage('consent');
+    chk();
+    return;
+  }
+
+  $('st').textContent = 'Session stopped. Export your data, or reload the page to start again.';
   $('win').textContent = 'stopped';
   $('win').dataset.ok = '0';
   chk();
   if (reports.length > 0) showSummary();
 };
 
+const TEXT_CSV_COLS = new Set(['participant_id', 'session_id']);
+export function csvCell(v, { isText = false } = {}) {
+  if (v == null) return '';
+  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : '';
+  let s = String(v);
+  if (isText && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  return /[",\r\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
+}
+
+function samePhaseContiguous(rows, idx, reportT, phase) {
+  for (let i = idx + 1; i < rows.length; i++) {
+    if (rows[i].t > reportT) break;
+    if (rows[i].phase !== phase) return false;
+  }
+  return true;
+}
+
 // Retrospective labelling applied at export:
 // A window takes a self-report's label only if it lies wholly inside the reported phase,
-// shares its phase, and ends within LABEL_SPAN_S before the report. Nearest later report wins.
-function labelled() {
-  const b = reports.filter(p => p.phase === 'baseline').sort((a, c) => a.t - c.t)[0];
-  return log.map(r => {
-    const c = reports
+// shares its phase without an intervening phase switch, and ends within LABEL_SPAN_S before the report. Nearest later report wins.
+export function labelled(logRows = log, reportList = reports) {
+  const b = reportList.filter(p => p.phase === 'baseline').sort((a, c) => a.t - c.t).at(-1);
+  return logRows.map((r, idx) => {
+    const c = reportList
       .filter(p =>
         p.phase === r.phase &&
         !['settle', 'calibration'].includes(r.phase) &&
         !r.transition &&
         r.window_start_s >= p.t - LABEL_SPAN_S &&
-        r.window_end_s <= p.t
+        r.window_end_s <= p.t &&
+        (r.phase_start_s == null || p.t >= r.phase_start_s) &&
+        samePhaseContiguous(logRows, idx, p.t, r.phase)
       )
       .sort((a, d) => a.t - d.t)[0];
 
@@ -1915,17 +2089,16 @@ $('exp').onclick = () => {
   }
   const rows = labelled();
   const ks = [...new Set(rows.flatMap(Object.keys))];
-  const esc = v => {
-    if (v == null) return '';
-    const s = String(v);
-    return /[",\n]/.test(s) ? '"' + s.replaceAll('"', '""') + '"' : s;
-  };
-  const csv = [ks.join(','), ...rows.map(r => ks.map(k => esc(r[k])).join(','))].join('\n');
+  const csv = [
+    ks.join(','),
+    ...rows.map(r => ks.map(k => csvCell(r[k], { isText: TEXT_CSV_COLS.has(k) })).join(','))
+  ].join('\n');
   const a = document.createElement('a');
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const safePart = s => (String(s || 'session').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'session');
   a.href = url;
-  a.download = `${participantId}_${sessionId}_session.csv`;
+  a.download = `${safePart(participantId)}_${safePart(sessionId)}_session.csv`;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
   toast(`Exported ${rows.filter(r => r.eligible_for_training).length} labelled windows from ${reports.length} check-in(s).`);
 };

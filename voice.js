@@ -15,7 +15,9 @@ export function acousticFeatures(timeBuf, freqBins, sampleRate = 48000) {
   let num = 0, den = 0;
   const binHz = (sampleRate / 2) / (freqBins.length || 1);
   for (let i = 1; i < freqBins.length; i++) {
-    const mag = Math.max(0, (freqBins[i] + 100) / 100); // dB (-100..0) -> linear weight
+    const b = freqBins[i];
+    if (!Number.isFinite(b)) continue;
+    const mag = Math.max(0, (b + 100) / 100); // dB (-100..0) -> linear weight
     num += i * binHz * mag;
     den += mag;
   }
@@ -41,6 +43,7 @@ export function scoreVoice({ rms = 0, centroid = 0, zcr = 0 } = {}) {
 export function createVoiceMonitor(stream, onVoice, existingCtx = null) {
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AC || !stream?.getAudioTracks?.().length) return { stop() {} };
+  const ownsCtx = !existingCtx;
   const ctx = existingCtx || new AC();
   if (ctx.state === 'suspended') ctx.resume?.().catch?.(() => {});
   const src = ctx.createMediaStreamSource(stream), an = ctx.createAnalyser();
@@ -48,6 +51,7 @@ export function createVoiceMonitor(stream, onVoice, existingCtx = null) {
   src.connect(an);
   const tBuf = new Float32Array(an.fftSize), fBuf = new Float32Array(an.frequencyBinCount);
   const timer = setInterval(() => {
+    if (ctx.state === 'closed') return;
     an.getFloatTimeDomainData(tBuf);
     an.getFloatFrequencyData(fBuf);
     const s = scoreVoice(acousticFeatures(tBuf, fBuf, ctx.sampleRate));
@@ -57,7 +61,10 @@ export function createVoiceMonitor(stream, onVoice, existingCtx = null) {
   return {
     stop() {
       clearInterval(timer);
-      try { src.disconnect(); an.disconnect(); ctx.close().catch?.(() => {}); } catch (e) {}
+      try { src.disconnect(); an.disconnect(); } catch (e) {}
+      if (ownsCtx) {
+        try { ctx.close().catch?.(() => {}); } catch (e) {}
+      }
     }
   };
 }

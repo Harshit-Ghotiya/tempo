@@ -28,7 +28,7 @@ The nearest later report wins if several qualify. No label is carried forward.
 - Report the number of participants and eligible windows, each modality separately, fusion, and a constant-prediction baseline.
 
 ## v0.4 additions
-- Every row carries the participant's own baseline report: `baseline_raw_sattva`, `baseline_raw_rajas`, `baseline_raw_tamas`, `baseline_raw_stress` (blank if no baseline report was saved). The trainer uses them for change-from-baseline targets.
+- Every row carries the participant's own baseline report (latest `baseline` report if multiple are saved): `baseline_raw_sattva`, `baseline_raw_rajas`, `baseline_raw_tamas`, `baseline_raw_stress` (blank if no baseline report was saved). The trainer uses them for change-from-baseline targets.
 - The trainer treats a modality's features as missing when `face_quality`, `rppg_quality` or `pose_quality` is below `--min-quality` (default 0.3) or blank.
 - Rows are weighted so every participant, and within a participant every self-report, counts equally.
 - Outputs (artifacts/): results_compositional.csv, per_participant_compositional.csv, fusion_weights.csv, c_sweep.csv, results_regression.csv, permutation.json (if requested), models.json.
@@ -37,7 +37,7 @@ The nearest later report wins if several qualify. No label is carried forward.
 - `hr` is exported only for validated windows (see hr.js); otherwise it is blank. `rppg_quality` is spectral SNR mapped to 0-1: clamp((SNR_dB + 6) / 12). Windows below 0.3 count as missing in the trainer.
 - `perclos` is exported raw but is no longer modelled (no `z_perclos`; removed from the trainer's feature list).
 - Baselines are the median and 1.4826 x MAD (floored at 10% of the median) of at least 25 good-quality calibration windows per feature. A feature with fewer has no `z_` column for that session, and the portal says so on screen.
-- `p_sattva`, `p_rajas`, `p_tamas` and `agree` are written only when a trained `models.json` is loaded or `DEMO_GUNA` is true in app.js (default false).
+- `p_sattva`, `p_rajas`, `p_tamas` and `agree` are written when a model file loads (`./models.json`, or bundled demo `./preset_models.json` whose UI footer explicitly marks `Preset demo weights (unfitted)`) or `DEMO_GUNA` is true in `app.js`.
 
 ## v0.6 additions
 - Face features are action-unit composites of MediaPipe blendshape scores, averaged over the 10 s window: browLower (AU4), browRaise (AU1/2), lidTight (AU7), eyeWide (AU5), lipTight (AU23/24 plus lip rolls), lipDown (AU15), smile (AU12). `expressivity` is the mean standard deviation of those composites (how much the face moves). The old `brow` and `lip` columns are gone.
@@ -54,3 +54,4 @@ The nearest later report wins if several qualify. No label is carried forward.
 - `stroop_active`: integer flag (`1` or `0`) indicating whether the built-in 60-second Stroop Color-Word cognitive stressor challenge was actively running during this window.
 - `breathe_active`: integer flag (`1` or `0`) indicating whether the guided parasympathetic breathing coach was actively running during this window.
 - `down_look`: downward head-pitch and gaze attenuation coefficient in [0, 1] (0 = neutral screen-facing; > 0 = foreshortening attenuation applied to lidTight/browLower/lipTight).
+- `fps`, `tab_hidden`: analysis frame rate (`'audio'`/`''` in voice-only sessions) and browser tab visibility state during the window (`visibilitychange` marks the following 30 s as `transition = true` unless Picture-in-Picture is active).

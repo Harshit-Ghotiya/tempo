@@ -81,6 +81,8 @@ export function smoothPath(pts) {
 export const ema = (dt, tau) => 1 - Math.exp(-Math.max(0, dt) / (tau || 1));
 
 // Live trend chart renderer bound to an SVG container.
+const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+
 export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padRight = 64 } = {}) {
   let series = [];
   let marks = [];
@@ -92,6 +94,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
   let ro = null;
   let running = false;
   let W = 600, H = 140;
+  let prevZones = '', prevGrid = '', prevPhases = '', prevChecks = '';
 
   const $id = id => svg ? (svg.getElementById?.(id) || svg.ownerDocument?.getElementById?.(id)) : null;
 
@@ -129,6 +132,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
       range = [-1, 1.5];
       headV = 0;
       lastFrame = 0;
+      prevZones = prevGrid = prevPhases = prevChecks = '';
       if (rafId && typeof cancelAnimationFrame === 'function') {
         cancelAnimationFrame(rafId);
         rafId = null;
@@ -138,6 +142,10 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
     },
 
     start(getNow) {
+      if (rafId && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
       running = true;
       lastFrame = performance.now();
       updateSize();
@@ -148,6 +156,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
 
       const loop = ts => {
         if (!running) return;
+        if (ts < lastFrame) lastFrame = ts;
         const dt = (ts - lastFrame) / 1e3;
         if (ts - lastFrame >= 30) {
           lastFrame = ts;
@@ -224,7 +233,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
             }
           }
         }
-        zonesG.innerHTML = zHtml;
+        if (zHtml !== prevZones) { zonesG.innerHTML = zHtml; prevZones = zHtml; }
       }
 
       // Vertical time gridlines (at 60s, 120s, 180s ago)
@@ -237,7 +246,7 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
             gridHtml += `<line x1="${f(gx)}" x2="${f(gx)}" y1="${padTop}" y2="${H - padBottom}" stroke="var(--line)" stroke-dasharray="2 3" opacity="0.6"/>`;
           }
         }
-        gridG.innerHTML = gridHtml;
+        if (gridHtml !== prevGrid) { gridG.innerHTML = gridHtml; prevGrid = gridHtml; }
       }
 
       // Phase annotations and background regions
@@ -256,9 +265,9 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
             pHtml += `<rect x="${f(mx)}" y="${padTop}" width="${f(rw)}" height="${f(plotH)}" fill="${tint}"/>`;
           }
           pHtml += `<line x1="${f(mx)}" x2="${f(mx)}" y1="${padTop}" y2="${H - padBottom}" stroke="var(--line)" stroke-width="1.2"/>`;
-          pHtml += `<text x="${f(mx + 6)}" y="${padTop + 12}" fill="var(--text-3)" font-size="11" font-weight="600" text-transform="capitalize">${m.phase}</text>`;
+          pHtml += `<text x="${f(mx + 6)}" y="${padTop + 12}" fill="var(--text-3)" font-size="11" font-weight="600" style="text-transform:capitalize">${esc(m.phase)}</text>`;
         }
-        phaseG.innerHTML = pHtml;
+        if (pHtml !== prevPhases) { phaseG.innerHTML = pHtml; prevPhases = pHtml; }
       }
 
       // Segment paths
@@ -301,7 +310,9 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
           pulse.setAttribute('cx', f(lastPt.x));
           pulse.setAttribute('cy', f(lastPt.y));
         }
-        svg.dataset.zone = zoneOf(headV);
+        const zn = zoneOf(headV);
+        if (zn) svg.dataset.zone = zn;
+        else delete svg.dataset.zone;
       } else {
         if (head) { head.setAttribute('cx', '-20'); head.setAttribute('cy', '-20'); }
         if (pulse) { pulse.setAttribute('cx', '-20'); pulse.setAttribute('cy', '-20'); }
@@ -316,9 +327,9 @@ export function createTrend(svg, { span = 180, padTop = 14, padBottom = 22, padR
           const curP = series.filter(p => Math.abs(p.t - c.t) < 2 && p.v != null)[0];
           const cy = curP ? toY(curP.v) : toY(0);
           cHtml += `<circle cx="${f(cx)}" cy="${f(cy)}" r="4.5" fill="#ffffff" stroke="var(--accent)" stroke-width="2"/>`;
-          cHtml += `<text x="${f(cx)}" y="${f(cy - 9)}" fill="var(--text)" font-size="11" font-weight="700" text-anchor="middle">${c.stress}/10</text>`;
+          cHtml += `<text x="${f(cx)}" y="${f(cy - 9)}" fill="var(--text)" font-size="11" font-weight="700" text-anchor="middle">${Number(c.stress)}/10</text>`;
         }
-        checkG.innerHTML = cHtml;
+        if (cHtml !== prevChecks) { checkG.innerHTML = cHtml; prevChecks = cHtml; }
       }
     }
   };
